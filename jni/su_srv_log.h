@@ -1,3 +1,14 @@
+/*
+ * libsusrv: Android SU native client library.
+ *
+ * Chris Dufaza
+ * <t0kt0ckus@gmail.com>
+ * 
+ * (C) 2014
+ *
+ * License: GPLv3
+ *
+ */
 #ifndef _SU_SRV_LOG_H
 #define _SU_SRV_LOG_H
 

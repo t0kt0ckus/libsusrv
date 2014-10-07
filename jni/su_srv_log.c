@@ -1,3 +1,14 @@
+/*
+ * libsusrv: Android SU native client library.
+ *
+ * Chris Dufaza
+ * <t0kt0ckus@gmail.com>
+ * 
+ * (C) 2014
+ *
+ * License: GPLv3
+ *
+ */
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -6,19 +17,19 @@
 
 #include "su_srv_log.h"
 
-// var/log should exist 
+// var/log should exist within appdir_path
 static const char *LOG_FILE_NAME = "var/log/libsusrv.log";
 
-int su_srv_log_init(const char * logdir_path)
+int su_srv_log_init(const char * appdir_path)
 {
-  char * log_path = malloc(strlen(logdir_path) + strlen(LOG_FILE_NAME) +1 +1);
-  if (sprintf(log_path, "%s/%s", logdir_path, LOG_FILE_NAME) < 0)
+  char * log_path = malloc(strlen(appdir_path) + strlen(LOG_FILE_NAME) +1 +1);
+  if (sprintf(log_path, "%s/%s", appdir_path, LOG_FILE_NAME) < 0)
     return -1;
   
   su_srv_log_file_ptr = fopen(log_path, "w");
   free(log_path);
 
-  return (su_srv_log_file_ptr == 0) ? -1 : 0;
+  return (su_srv_log_file_ptr == 0) ? errno : 0;
 }
 
 void su_srv_log_close()
@@ -43,7 +54,8 @@ void su_srv_log_printf(const char *fmt, ...)
 void su_srv_log_perror(const char *msg)
 {
   if (su_srv_log_file_ptr) {
-    fprintf(su_srv_log_file_ptr, "%s: %s\n", msg, strerror(errno));
+    fprintf(su_srv_log_file_ptr, "%s: %s [%d]\n", msg, strerror(errno),
+            errno);
     fflush(su_srv_log_file_ptr);
   }
 }    

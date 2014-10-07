@@ -1,3 +1,14 @@
+/*
+ * libsusrv: Android SU native client library.
+ *
+ * Chris Dufaza
+ * <t0kt0ckus@gmail.com>
+ * 
+ * (C) 2014
+ *
+ * License: GPLv3
+ *
+ */
 #include "su_srv.h"
 #include "su_srv_jni.h"
 
@@ -29,3 +40,9 @@ JNIEXPORT jint JNICALL
   return result;
 }
 
+JNIEXPORT void JNICALL
+  Java_org_openmarl_susrv_SuShell_close(JNIEnv * jEnv, jobject jInstance)
+{
+  su_srv_close();
+}
+  
