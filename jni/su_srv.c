@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -40,11 +41,12 @@ static struct sockaddr_un su_srv_un_addr;
 // SU shell definition
 // (should work on most Android/SU)
 //
-static const char *su_shell_cmd = "/system/xbin/su";
-static char * const su_shell_params[] = {"/system/xbin/su", NULL};
+static const char *su_shell_cmd;
+static const char *su_shell_cmd_candidates[] = {
+   "/sbin/su", "/system/sbin/su", "/system/bin/su", "/system/xbin/su", "EOF"
+};
 static char * const su_shell_environment[] = {
-      "PATH=/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin",
-      NULL};
+      "PATH=/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin", NULL};
 
 // File descriptors of the UNIX socket
 //
@@ -185,7 +187,24 @@ int su_srv_init(const char * appdir_path)
         su_srv_log_perror("Failed to accept()");
         return -1;
     }
-    // ... and redirect in/out/err to child SU shell process
+
+    // search for suitable su binary
+    struct stat sustat;
+    int c=0;
+    while ((c < sizeof(su_shell_cmd_candidates))
+            && (stat(su_shell_cmd_candidates[c++], &sustat) != 0) );
+    if (c == sizeof(su_shell_cmd_candidates))
+    {
+        su_srv_log_printf("Failed to find suitable su binary");
+        return -1;
+    }
+    else 
+    {
+        su_shell_cmd = su_shell_cmd_candidates[c-1];
+        su_srv_log_printf("Using su binary: %s", su_shell_cmd);         
+    }
+
+    // fork child SU shell process and setupt stdin/stderr/stdout
     su_shell_pid = fork();
     if (su_shell_pid < 0)
     {
@@ -194,10 +213,12 @@ int su_srv_init(const char * appdir_path)
     }
     if (su_shell_pid == 0)
     {
+        char * su_shell_params[2] = {su_shell_cmd, NULL};
+
         dup2(un_peer_fd,0);
         dup2(0,1);
         dup2(0,2);
-        execve(su_shell_cmd, su_shell_params, su_shell_environment);          
+        execve(su_shell_cmd, su_shell_params, su_shell_environment);
     }
     else
     {
