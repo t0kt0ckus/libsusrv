@@ -12,7 +12,7 @@
 
 #include <jni.h>
 
-// org.openmarl.susrv.SuShell.initSuSrv():
+// org.openmarl.susrv.SuShell.initSuSrv(): initializes a new SU shell session
 //
 // jAppDir: Android application private filesystem root
 //
@@ -30,6 +30,9 @@ JNIEXPORT jint JNICALL
 JNIEXPORT jint JNICALL
     Java_org_openmarl_susrv_SuShell_exec(JNIEnv * jEnv, jobject jInstance, jstring jCommand);
 
+// org.openmarl.susrv.SuShell.exitSuSrv(): exits current SU shell session
+//
+//
 JNIEXPORT void JNICALL Java_org_openmarl_susrv_SuShell_exitSuSrv(JNIEnv * jEnv, jobject jInstance);
   
 #endif
