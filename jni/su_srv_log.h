@@ -14,15 +14,11 @@
 extern "C" {
 #endif
 
-FILE *su_srv_log_file_ptr;
+FILE *su_srv_log_fptr;
 
-// su_srv_log_init(): initializes the log file
+// su_srv_log_init():
 // 
-// fs_path: the log file will be <fs_path>/var/log/libsusrv.log (<fs_path>/var/log must exist)
-//
-// Returns: 0 on success, negative value on error.
-//
-int su_srv_log_init(const char * fs_path);
+int su_srv_log_init(const char * pfs_root, int pid);
 
 // su_srv_close():
 //

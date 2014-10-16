@@ -4,7 +4,7 @@ LOCAL_PATH := $(call my-dir)
 ##
 include $(CLEAR_VARS)
 LOCAL_MODULE := susrv
-LOCAL_SRC_FILES := su_srv.c su_srv_jni.c su_srv_log.c
+LOCAL_SRC_FILES := su_srv.c su_srv_jni.c su_srv_log.c su_srv_pfs.c su_shell_session.c
 LOCAL_CFLAGS := -g -Wall
 include $(BUILD_SHARED_LIBRARY)
 

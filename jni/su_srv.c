@@ -22,102 +22,228 @@
 #include <pthread.h>
 #include <errno.h>
 
+#include "su_shell_session.h"
+#include "su_srv_pfs.h"
 #include "su_srv_log.h"
 #include "su_srv.h"
 
-// The local (UNIX) address of our su_srv
-//
-// sys/un.h
-/*
- struct sockaddr_un
-  {
-    __SOCKADDR_COMMON (sun_);
-    char sun_path[108];         
-  };
-*/
-//
-static struct sockaddr_un su_srv_un_addr;
 
-// SU shell definition
-// (should work on most Android/SU)
+/////////////////////////////////////////////////////////////////////////////////////////////
 //
-static const char *su_shell_cmd;
-static const char *su_shell_cmd_candidates[] = {
-   "/sbin/su", "/system/sbin/su", "/system/bin/su", "/system/xbin/su", "EOF"
+// Constants
+//
+
+#ifdef SU_SRV_TEST_BUILD
+static char *SU_SHELL_BINARY_CANDIDATES[] = {
+        "/bin/su", "/sbin/su", "/usr/bin/su", "/usr/sbin/su", NULL
 };
-static char * const su_shell_environment[] = {
-      "PATH=/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin", NULL};
+static char * const SU_SHELL_ENVIRONMENT[] = { NULL };
+#else
+static char *SU_SHELL_BINARY_CANDIDATES[] = {
+        "/sbin/su", "/system/sbin/su", "/system/bin/su", "/system/xbin/su", NULL
+};
+static char * const SU_SHELL_ENVIRONMENT[] = {
+        "PATH=/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin", NULL
+};
+#endif
 
-// File descriptors of the UNIX socket
-//
-static int un_rdv_fd = 0, un_peer_fd = 0;
-socklen_t un_socklen = sizeof(struct sockaddr_un);
+static const char * EOC_CMD = "echo \"<SU_SRV_EOC>\"$?\n";
+static const char * EOC_TAG = "<SU_SRV_EOC>";
+static const char * EOC_SSCAN ="<SU_SRV_EOC>%d\n";
 
-// PID of child shell process
-//
-pid_t su_shell_pid; 
+static const int WAIT_CHILD_MAX_RETRY = 3;
+static const int WAIT_CHILD_SLEEP_SEC = 1;
 
-// File descriptor of our shell client UNIX socket
-//
-static int su_shell_client_fd;
 
-// POSIX thread context for shell session handlera loop
+/////////////////////////////////////////////////////////////////////////////////////////////
 //
-static pthread_t su_shell_session_tid;
-// mutex to synchronize result code extraction
-static pthread_mutex_t su_shell_command_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t su_shell_command_cond = PTHREAD_COND_INITIALIZER;
-static int su_shell_cmd_result_code;
+// FORWARD definition
 //
-static char * su_shell_linebuf_ptr;
 
-// su_shell_session_thfunc(): shell session handler thread that
-//                            is responsible for result code extraction
+static char *find_su_binary();
+
+static int pth_block_sigchld();
+static int pth_unblock_sigchld();
+
+static void *session_handler_fn(void *);
+
+static int create_handler_thread(su_shell_session *session, void *(* handler_fn)(void *));
+
+static int start_shell_process(int fd, su_shell_session *session);
+static int stop_shell_process(su_shell_session *session);
+
+static int destroy_session(su_shell_session *session);
+
+///////////////////////////////////////////////////////////////////////////////////////////////
 //
+//                                         State
+
+static su_shell_session *_su_session = NULL;
+static sigset_t SU_SRV_SIGMASK;
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
 //
-static const char * EOC_CMD = "echo \"<EOC>\"$?\n";
-static const char * EOC_TAG = "<EOC>";
-static const char * EOC_SSCAN ="<EOC>%d\n";
-int SU_SRV_CMD_FAILED = -999;
+// API: su_session.h
 //
-void * su_shell_session_thfunc(void * targ)
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+int su_srv_open_shell_session(const char *pfs_root)
 {
-    int fd = fileno(su_srv_log_file_ptr);
-  
-    su_shell_linebuf_ptr = malloc(64 * sizeof(char));
+    if (_su_session)
+        return SU_SRV_SESSION_ALREADY_OPEN_ERROR;
+
+    if (su_srv_pfs_init(pfs_root))
+        return SU_SRV_PFS_ERROR;
+
+    pid_t owner_pid = getpid();
+    su_shell_session *session;
+   
+    su_srv_log_init(pfs_root, owner_pid);
+
+    if ((session = su_shell_session_new(pfs_root, owner_pid)) == NULL)
+        return SU_SRV_SYSTEM_ERROR;
+
+    su_srv_log_printf("Initializing SU shell session:");
+    su_srv_log_printf("owner PID: %d", session->owner_pid);
+    su_srv_log_printf("AF UNIX path: %s", session->afun_rdv_addr.sun_path);
+
+    int last_err = 0;
+
+    int peer_fd = su_shell_session_af_un_rdv(session);
+    if (peer_fd > 0)
+    {
+        su_srv_log_printf("AF UNIX rendez-vous complete");
+        if ((last_err = start_shell_process(peer_fd, session)))
+        {
+            su_srv_log_printf("Failed to create SU shell child process");
+        }
+        else
+        {
+            su_srv_log_printf("Created SU shell child process (PID: %d)", session->shell_pid);
+
+            if ((last_err = create_handler_thread(session, session_handler_fn)))
+            {
+                su_srv_log_printf("Failed to create handler loop's thread !");
+
+                // when unable to start associated handler loop, stops the shell process
+                stop_shell_process(session);
+            }
+        } // end-of shell subprocess valid
+
+        close(peer_fd);
+    } // end-of un_peer_fd valid
+
+    if (last_err)
+    {
+        su_srv_log_printf("Failed to initialize SU shell session !");
+        su_shell_session_delete(session);
+    }
+    else
+    {
+        su_srv_log_printf("SU shell session initialization complete");
+        _su_session = session;
+    }
+
+    return last_err;
+}
+
+int su_srv_exec(const char *cmd_str)    
+{
+    if (! _su_session)
+    {
+        su_srv_log_printf("Ignored exec(), no session");
+        return SU_SRV_NO_SESSION_ERROR;
+    }
+
+    if (pthread_mutex_lock(_su_session->shell_sync_mutex) == 0)
+    {
+        su_srv_log_cmdstr(cmd_str);
+
+        write(_su_session->afun_client_fd, cmd_str, strlen(cmd_str));  
+        write(_su_session->afun_client_fd, "\n", 1);
+        write(_su_session->afun_client_fd, EOC_CMD, strlen(EOC_CMD));  
+        write(_su_session->afun_client_fd, "\n", 1);
+
+        _su_session->shell_cmd_exit_code = SU_SRV_EXIT_CODE_UNKNOWN;
+        pthread_cond_wait(_su_session->shell_sync_ready, _su_session->shell_sync_mutex);
+        pthread_mutex_unlock(_su_session->shell_sync_mutex);
+
+        return _su_session->shell_cmd_exit_code;
+    }
+    else
+    {
+        su_srv_log_printf("Failed to acquire lock on exec()");
+        return SU_SRV_SYSTEM_ERROR;
+    }
+}
+
+int su_srv_exit_shell_session()
+{
+    if (! _su_session)
+    {
+        su_srv_log_printf("Ignored exit(), no session");
+        return SU_SRV_NO_SESSION_ERROR;
+    }
+
+    int last_err = pthread_mutex_trylock(_su_session->shell_sync_mutex);
+    if (last_err)
+    {
+        pthread_cond_signal(_su_session->shell_sync_ready);
+        last_err = pthread_mutex_lock(_su_session->shell_sync_mutex);
+    }
+
+    if (last_err) 
+        su_srv_log_printf("Failed to acquire lock on exit()");
+    else
+    {
+        su_shell_session *session_to_kill = _su_session;
+        _su_session = NULL;
+        destroy_session(session_to_kill); // destroy will unlock mutex 
+    }
+
+    return last_err;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////
+//
+// FORWARDs implementation
+//
+
+
+void *session_handler_fn(void * targs)
+{
+    int fd = fileno(su_srv_log_fptr);
+      
+    char * su_shell_linebuf_ptr = malloc(64 * sizeof(char));
     int curr_line_offset = 0;
     char curr_byte;
-  
-    while (read(su_shell_client_fd, &curr_byte, 1) > 0) 
+
+    while (read(_su_session->afun_client_fd, &curr_byte, 1) > 0) 
     {
-    
-        if (curr_line_offset > (sizeof(su_shell_linebuf_ptr -1 -1) )) 
+        if (curr_line_offset > (sizeof(su_shell_linebuf_ptr -1 -1) ))
         {
             su_shell_linebuf_ptr = realloc(su_shell_linebuf_ptr,
-                    (curr_line_offset + 64) * sizeof(char));
+                                           (curr_line_offset + 64) * sizeof(char));
         }
-
         su_shell_linebuf_ptr[curr_line_offset++] = curr_byte;
 
-        // end of line
         if (curr_byte == 10)
         {
             su_shell_linebuf_ptr[curr_line_offset] = 0;
             curr_line_offset = 0;
 
-            // the line seems to be an EAC tag
             if (strstr(su_shell_linebuf_ptr, EOC_TAG))
             {
                 if (sscanf(su_shell_linebuf_ptr,
                             EOC_SSCAN,
-                            &su_shell_cmd_result_code) == EOF)
+                            &_su_session->shell_cmd_exit_code) == EOF)
                 {
-                    su_shell_cmd_result_code = SU_SRV_CMD_FAILED;
+                    _su_session->shell_cmd_exit_code = SU_SRV_EXIT_CODE_UNKNOWN;
                 }
-            
-                pthread_cond_signal(&su_shell_command_cond);          
+
+                pthread_cond_signal(_su_session->shell_sync_ready);          
             }
-            // the line seems to be a proper shell output
             else
             {
                 write(fd, su_shell_linebuf_ptr, strlen(su_shell_linebuf_ptr));
@@ -125,183 +251,153 @@ void * su_shell_session_thfunc(void * targ)
         }
     }
 
-    close(su_shell_client_fd);
-    su_shell_client_fd = 0;
+    free(su_shell_linebuf_ptr);
     pthread_exit(0);  
 }
 
-// su_srv_init():
-//
-int su_srv_init(const char * appdir_path)
-{  
-    // init log
-    su_srv_log_init(appdir_path);
-    su_srv_log_printf("Initializing libsusrv ...");
-
-    // initializes AF_UNIX address
-    size_t un_path_len = strlen(appdir_path) + 1 + strlen("var/run/susrv_sock") + 1;
-    if (un_path_len > 107)
+int start_shell_process(int fd, su_shell_session *session)
+{
+    char * su_binary = find_su_binary();
+    if (su_binary == NULL)
     {
-        su_srv_log_printf("Failed to create UNIX socket address (%d > UNIX_MAX_PATH)", 
-                un_path_len);
-        return -1;
-    }  
-    char * un_path = malloc(un_path_len * sizeof(char));
-    sprintf(un_path, "%s/%s", appdir_path, "var/run/susrv_sock");
-    strcpy(su_srv_un_addr.sun_path, un_path);
-    free(un_path);
-    su_srv_un_addr.sun_family = AF_UNIX;
-
-    // creates the rendez-vous UNIX socket and starts listening
-    unlink(su_srv_un_addr.sun_path);    
-    un_rdv_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (un_rdv_fd < 0)
-    {
-        su_srv_log_perror("Failed to create AF_UNIX/SOCK_STREAM socket");
-        return -1;
-    }    
-    if (bind(un_rdv_fd, (struct sockaddr *) &su_srv_un_addr, sizeof(struct sockaddr_un)) < 0)
-    {
-        su_srv_log_perror("Failed to bind()");
-        return -1;
+        su_srv_log_printf("Failed to locate any suitable su binary");
+        return SU_SRV_NO_SYSTEM_SU_ERROR;
     }
-    if (listen(un_rdv_fd, 1) < 0) {
-        su_srv_log_perror("Failed to listen()");
-        return -1;
-    }
-    su_srv_log_printf("Initialized AF_UNIX/SOCK_STREAM socket: %s", su_srv_un_addr.sun_path);
+    su_srv_log_printf("Found system SU binary: %s", su_binary);
 
-    // initiates the client connection to this local socket
-    su_shell_client_fd = socket(AF_UNIX, SOCK_STREAM, 0);      
-    if (connect(su_shell_client_fd, (struct sockaddr *) &su_srv_un_addr,
-                sizeof(struct sockaddr_un)) < 0)
-    {      
-        su_srv_log_perror("Failed to connect()");    
-        return -1;
+    pid_t pid = fork();
+    if (pid < 0)
+    {
+        su_srv_log_perror("Failed to fork()");
+        return SU_SRV_SYSTEM_ERROR;
     }
+    else if (pid == 0)
+    {
+        char *const params[2] = {su_binary, NULL};
 
-    // accepts client connection and initializes peer socket
-    un_peer_fd = accept(un_rdv_fd, (struct sockaddr *) &su_srv_un_addr, &un_socklen); 
-    if (un_peer_fd < 0)
-    {
-        su_srv_log_perror("Failed to accept()");
-        return -1;
-    }
-
-    // search for suitable su binary
-    struct stat sustat;
-    int c=0;
-    while ((c < sizeof(su_shell_cmd_candidates))
-            && (stat(su_shell_cmd_candidates[c++], &sustat) != 0) );
-    if (c == sizeof(su_shell_cmd_candidates))
-    {
-        su_srv_log_printf("Failed to find suitable su binary");
-        return -1;
-    }
-    else 
-    {
-        su_shell_cmd = su_shell_cmd_candidates[c-1];
-        su_srv_log_printf("Using su binary: %s", su_shell_cmd);         
-    }
-
-    // fork child SU shell process and setupt stdin/stderr/stdout
-    su_shell_pid = fork();
-    if (su_shell_pid < 0)
-    {
-        su_srv_log_perror("Failed to fork shell process");
-        return -1;
-    }
-    if (su_shell_pid == 0)
-    {
-        char * su_shell_params[2] = {su_shell_cmd, NULL};
-
-        dup2(un_peer_fd,0);
-        dup2(0,1);
-        dup2(0,2);
-        execve(su_shell_cmd, su_shell_params, su_shell_environment);
+        dup2(fd,0);
+        dup2(1,0);
+        dup2(2,0);
+        execve(su_binary, params, SU_SHELL_ENVIRONMENT);
     }
     else
     {
-        close(un_rdv_fd);
-        close(un_peer_fd);
+        session->shell_pid = pid;
+    }
 
-        su_srv_log_printf("SU shell PID: %d", su_shell_pid);
-
-        // eventually, starts shell session handler
-        if (pthread_create(&su_shell_session_tid, 0, su_shell_session_thfunc, (void *) 0))
-        {
-            su_srv_log_printf("Failed to pthread_create()");
-            return -1;
-        }
-        su_srv_log_printf("SU shell session initialization's complete");
-        su_srv_log_printf("------------------------------------------");
-    } 
-  
     return 0;
 }
 
-// su_srv_exe():
-//
-int su_srv_exe(const char *cmd_str)
+int stop_shell_process(su_shell_session *session)
 {
-    if (su_shell_client_fd > 0) 
+    int waited = 0;
+
+    if (session->shell_pid)
     {
-        su_srv_log_cmdstr(cmd_str);
+        int again = 0;
+        int wstatus;
+         
+        while ((again < WAIT_CHILD_MAX_RETRY) && (! waited))
+        {
+            // note: we use waitpid/sleep as sigtimedwait's not defined by Android libc
+            
+            if ((waited = waitpid(session->shell_pid, &wstatus, WNOHANG)) < 0)
+            {
+                if (errno == ECHILD)
+                {
+                    // ok, already dead
+                    waited = session->shell_pid; 
+                }
+                else 
+                {
+                    // retry
+                    waited = 0;
+                    if (again++ == 0)
+                    {
+                        // try to KILL on 1rst retry
+                        su_srv_log_printf("EAGAIN: kill(%d, SIGKILL)", session->shell_pid);
+                        kill(session->shell_pid, SIGKILL);
+                    }
+                    
+                    su_srv_log_printf("EAGAIN: sleep ...");
+                    sleep(WAIT_CHILD_SLEEP_SEC);
+                }
+            }
+            else
+            {
+                // shell process killed/waited
+                waited = session->shell_pid; 
+                session->shell_pid = 0;
+            }
 
-        write(su_shell_client_fd, cmd_str, strlen(cmd_str));  
-        write(su_shell_client_fd, "\n", 1);
-
-        write(su_shell_client_fd, EOC_CMD, strlen(EOC_CMD));  
-        write(su_shell_client_fd, "\n", 1);
+        } // end-while-not-waited 
         
-        pthread_mutex_lock(&su_shell_command_mutex);
-        pthread_cond_wait(&su_shell_command_cond, &su_shell_command_mutex);
-        pthread_mutex_unlock(&su_shell_command_mutex);
+    } // end-shell-pid    
+    
+    return (waited > 0) ? 0 : -1;
+}
 
-        return su_shell_cmd_result_code;
-    }
+int create_handler_thread(su_shell_session *session, void *(* handler_fn)(void *))
+{
+    pth_block_sigchld();
+    int pth = pthread_create(session->handler_pth, 0, handler_fn, NULL);
+    pth_unblock_sigchld();
+
+    return pth;
+}
+
+int pth_block_sigchld()
+{
+    sigset_t s_mask;
+    sigemptyset(&s_mask);
+    sigaddset(&s_mask, SIGCHLD);
+
+    return pthread_sigmask(SIG_BLOCK, &s_mask, &SU_SRV_SIGMASK);
+}
+
+int pth_unblock_sigchld()
+{
+    return pthread_sigmask(SIG_SETMASK, &SU_SRV_SIGMASK, NULL);
+}
+
+int destroy_session(su_shell_session *session)
+{
+    int last_err;
+
+     // sends the exit command to shell process
+    su_srv_log_cmdstr(SU_SRV_EXIT_CMD);
+    write(session->afun_client_fd, SU_SRV_EXIT_CMD, strlen(SU_SRV_EXIT_CMD));
+    write(session->afun_client_fd, "\n", 1);
+
+    // try to grant shell process closed
+    if ((last_err = stop_shell_process(session)))
+        su_srv_log_printf("Failed to stop an SU shell, expect a zombie process");
     else
     {
-        su_srv_log_printf("Not connected, command canceled: %s", cmd_str);
-        return SU_SRV_CMD_FAILED;
+        su_srv_log_printf("SU shell process stopped");
+        if ((! last_err) && (last_err = pthread_join(*_su_session->handler_pth, NULL)))
+            su_srv_log_printf(
+                        "Failed to stop a session handler thread, expect a zombie thread");
+        else
+            su_srv_log_printf("Session handler thread stopped");
     }
+
+    su_shell_session_delete(session); // will unlock mutex
+
+    return last_err;
 }
 
-// su_srv_exit():
-//
-static const char * EXIT_CMD = "exit";
-//
-void su_srv_exit()
+char *find_su_binary()
 {
-    if (su_shell_client_fd > 0) 
-    {
-        su_srv_log_cmdstr(EXIT_CMD);
-        write(su_shell_client_fd, EXIT_CMD, strlen(EXIT_CMD));  
-        write(su_shell_client_fd, "\n", 1);
+    struct stat su_bin_stat;
+    int c=0;
 
-        close(su_shell_client_fd);
-        su_shell_client_fd = 0;
+    while ((c < sizeof(SU_SHELL_BINARY_CANDIDATES))
+        && (stat(SU_SHELL_BINARY_CANDIDATES[c++], &su_bin_stat) != 0) );
 
-        su_srv_log_printf("Disconnected SU shell process");
-    }
-
-    if (su_shell_pid)
-    {
-        int status;
-        waitpid(su_shell_pid, &status, 0);
-        su_srv_log_printf("SU shell process terminated");
-    }
-
-    su_srv_log_close();
+    if (c == sizeof(SU_SHELL_BINARY_CANDIDATES))
+        return NULL;
+    
+    return SU_SHELL_BINARY_CANDIDATES[c-1];
 }
-
-// Shared library initialization
-//
-void __attribute__ ((constructor)) libsusrv_init(void);
-void libsusrv_init(void){}
-
-// Shared library cleanup
-//
-void __attribute__ ((destructor)) libsusrv_exit(void);
-void libsusrv_exit(void){}
 
