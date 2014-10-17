@@ -32,7 +32,7 @@
 
 static const char *SESSION_AFUN_FMT = "%s/var/run/su_session-%05d"; 
 static const int SESSION_AFUN_FMT_WLEN = 20 + 5;
-
+static const int BUF_INITIAL_SIZE = 32;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -59,9 +59,14 @@ su_shell_session *su_shell_session_new(const char * pfs_root, pid_t owner_pid)
         session->afun_client_fd = 0;
         session->shell_pid = (pid_t) 0;
         session->handler_pth = malloc(sizeof(pthread_t));
+        session->handler_buf = malloc(sizeof(char) * BUF_INITIAL_SIZE);
 
         if (init_af_un_address(session) || init_mutexes(session))
         {
+            if (session->handler_pth)
+                free(session->handler_pth);
+            if (session->handler_buf)
+                free(session->handler_buf);
             free(session);
             session = NULL;
         }
@@ -120,10 +125,10 @@ void su_shell_session_delete(su_shell_session *session)
     }
 
     if (session->handler_pth)
-    {
         free(session->handler_pth);
-        session->handler_pth = NULL;
-    }
+
+   if (session->handler_buf)
+        free(session->handler_buf);
 
     free(session);
 }

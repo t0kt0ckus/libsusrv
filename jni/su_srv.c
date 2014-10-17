@@ -35,7 +35,7 @@
 
 #ifdef SU_SRV_TEST_BUILD
 static char *SU_SHELL_BINARY_CANDIDATES[] = {
-        "/bin/su", "/sbin/su", "/usr/bin/su", "/usr/sbin/su", NULL
+        "/bin/bash", "/sbin/su", "/usr/bin/su", "/usr/sbin/su", NULL
 };
 static char * const SU_SHELL_ENVIRONMENT[] = { NULL };
 #else
@@ -57,7 +57,7 @@ static const int WAIT_CHILD_SLEEP_SEC = 1;
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 //
-// FORWARD definition
+// FORWARD definitions
 //
 
 static char *find_su_binary();
@@ -116,7 +116,7 @@ int su_srv_open_shell_session(const char *pfs_root)
         su_srv_log_printf("AF UNIX rendez-vous complete");
         if ((last_err = start_shell_process(peer_fd, session)))
         {
-            su_srv_log_printf("Failed to create SU shell child process");
+            su_srv_log_printf("Failed to create SU shell child process !");
         }
         else
         {
@@ -199,8 +199,13 @@ int su_srv_exit_shell_session()
     {
         su_shell_session *session_to_kill = _su_session;
         _su_session = NULL;
-        destroy_session(session_to_kill); // destroy will unlock mutex 
+        last_err = destroy_session(session_to_kill); // destroy will unlock mutex 
     }
+
+    if (last_err)
+        su_srv_log_printf("Failed to properly exit shell session");
+    else
+        su_srv_log_printf("SU shell session closed");
 
     return last_err;
 }
@@ -215,27 +220,26 @@ void *session_handler_fn(void * targs)
 {
     int fd = fileno(su_srv_log_fptr);
       
-    char * su_shell_linebuf_ptr = malloc(64 * sizeof(char));
     int curr_line_offset = 0;
     char curr_byte;
 
     while (read(_su_session->afun_client_fd, &curr_byte, 1) > 0) 
     {
-        if (curr_line_offset > (sizeof(su_shell_linebuf_ptr -1 -1) ))
+        if (curr_line_offset > (sizeof(_su_session->handler_buf) -1 -1) )
         {
-            su_shell_linebuf_ptr = realloc(su_shell_linebuf_ptr,
-                                           (curr_line_offset + 64) * sizeof(char));
+            _su_session->handler_buf = realloc(_su_session->handler_buf,
+                                           (curr_line_offset + 32) * sizeof(char));
         }
-        su_shell_linebuf_ptr[curr_line_offset++] = curr_byte;
+        _su_session->handler_buf[curr_line_offset++] = curr_byte;
 
-        if (curr_byte == 10)
+        if (curr_byte == 10) // LF
         {
-            su_shell_linebuf_ptr[curr_line_offset] = 0;
+            _su_session->handler_buf[curr_line_offset] = 0;
             curr_line_offset = 0;
 
-            if (strstr(su_shell_linebuf_ptr, EOC_TAG))
+            if (strstr(_su_session->handler_buf, EOC_TAG))
             {
-                if (sscanf(su_shell_linebuf_ptr,
+                if (sscanf(_su_session->handler_buf,
                             EOC_SSCAN,
                             &_su_session->shell_cmd_exit_code) == EOF)
                 {
@@ -246,12 +250,11 @@ void *session_handler_fn(void * targs)
             }
             else
             {
-                write(fd, su_shell_linebuf_ptr, strlen(su_shell_linebuf_ptr));
+                write(fd, _su_session->handler_buf, strlen(_su_session->handler_buf));
             }      
         }
     }
 
-    free(su_shell_linebuf_ptr);
     pthread_exit(0);  
 }
 
@@ -265,24 +268,25 @@ int start_shell_process(int fd, su_shell_session *session)
     }
     su_srv_log_printf("Found system SU binary: %s", su_binary);
 
-    pid_t pid = fork();
-    if (pid < 0)
+    pid_t shell_pid = fork();
+    if (shell_pid < 0)
     {
         su_srv_log_perror("Failed to fork()");
         return SU_SRV_SYSTEM_ERROR;
     }
-    else if (pid == 0)
+    
+    if (shell_pid == 0)
     {
-        char *const params[2] = {su_binary, NULL};
+            char *const params[2] = {su_binary, NULL};
 
-        dup2(fd,0);
-        dup2(1,0);
-        dup2(2,0);
-        execve(su_binary, params, SU_SHELL_ENVIRONMENT);
+            dup2(fd,0);
+            dup2(0,1);
+            dup2(0,2);
+            execve(su_binary, params, SU_SHELL_ENVIRONMENT);
     }
     else
     {
-        session->shell_pid = pid;
+        session->shell_pid = shell_pid;
     }
 
     return 0;
@@ -299,7 +303,7 @@ int stop_shell_process(su_shell_session *session)
          
         while ((again < WAIT_CHILD_MAX_RETRY) && (! waited))
         {
-            // note: we use waitpid/sleep as sigtimedwait's not defined by Android libc
+            // note: we use waitpid()/sleep() as sigtimedwait() is not defined by Android libc
             
             if ((waited = waitpid(session->shell_pid, &wstatus, WNOHANG)) < 0)
             {
@@ -364,18 +368,21 @@ int destroy_session(su_shell_session *session)
 {
     int last_err;
 
-     // sends the exit command to shell process
+    // sends the exit command to shell process
     su_srv_log_cmdstr(SU_SRV_EXIT_CMD);
     write(session->afun_client_fd, SU_SRV_EXIT_CMD, strlen(SU_SRV_EXIT_CMD));
     write(session->afun_client_fd, "\n", 1);
 
-    // try to grant shell process closed
+    // shell process closed
     if ((last_err = stop_shell_process(session)))
         su_srv_log_printf("Failed to stop an SU shell, expect a zombie process");
     else
     {
         su_srv_log_printf("SU shell process stopped");
-        if ((! last_err) && (last_err = pthread_join(*_su_session->handler_pth, NULL)))
+
+        // stops handler thread
+        if ((! last_err) && (last_err = (pthread_cancel(*session->handler_pth)
+                                || pthread_join(*session->handler_pth, NULL))) )
             su_srv_log_printf(
                         "Failed to stop a session handler thread, expect a zombie thread");
         else

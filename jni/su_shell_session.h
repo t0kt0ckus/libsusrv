@@ -52,6 +52,8 @@ typedef struct su_shell_session
     //
     pthread_mutex_t *shell_sync_mutex;
     pthread_cond_t *shell_sync_ready;
+    // 
+    char *handler_buf;
 
     // Last executed command exit code
     //

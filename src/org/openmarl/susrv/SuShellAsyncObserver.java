@@ -1,9 +1,7 @@
 /*
  * libsusrv: Android SU native client library.
  *
- * Chris Dufaza
  * <t0kt0ckus@gmail.com>
- *
  * (C) 2014
  *
  * License: GPLv3
@@ -12,10 +10,9 @@
 package org.openmarl.susrv;
 
 /**
- * An activity should implement this interface, and then use an
- * <code>SuShellInitializer</code> async task.
+ * Observer interface.
  */
-public interface SuShellInitListener {
+public interface SuShellAsyncObserver {
 
     /**
      * Notifies that the SU shell session should be ready.
