@@ -52,6 +52,7 @@ static const char * EOC_TAG = "<SU_SRV_EOC>";
 static const char * EOC_SSCAN ="<SU_SRV_EOC>%d\n";
 
 static const int WAIT_CHILD_MAX_RETRY = 3;
+static const int WAIT_CHILD_SLEEP_NSEC = 250000000;
 static const int WAIT_CHILD_SLEEP_SEC = 1;
 
 
@@ -72,7 +73,10 @@ static int create_handler_thread(su_shell_session *session, void *(* handler_fn)
 static int start_shell_process(int fd, su_shell_session *session);
 static int stop_shell_process(su_shell_session *session);
 
-static int destroy_session(su_shell_session *session);
+static int acquire_session_mutex(su_shell_session *session);
+static void send_exit_command(su_shell_session *session);
+static void delete_current_session();
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -185,28 +189,22 @@ int su_srv_exit_shell_session()
         su_srv_log_printf("Ignored exit(), no session");
         return SU_SRV_NO_SESSION_ERROR;
     }
+    int last_err;
 
-    int last_err = pthread_mutex_trylock(_su_session->shell_sync_mutex);
-    if (last_err)
+    if ((last_err = stop_shell_process(_su_session)))
+        su_srv_log_printf("Failed to stop SU shell, expect a zombie process !");
+
+    if ( (last_err = pthread_join(*_su_session->handler_pth, NULL)) )
+            su_srv_log_printf("Failed to join(), expect a zombie thread !");
+
+    if ( (last_err = acquire_session_mutex(_su_session)) )
     {
-        pthread_cond_signal(_su_session->shell_sync_ready);
-        last_err = pthread_mutex_lock(_su_session->shell_sync_mutex);
+        su_srv_log_printf("Failed to acquire lock on exit, expect zombie mutexes !");
     }
 
-    if (last_err) 
-        su_srv_log_printf("Failed to acquire lock on exit()");
-    else
-    {
-        su_shell_session *session_to_kill = _su_session;
-        _su_session = NULL;
-        last_err = destroy_session(session_to_kill); // destroy will unlock mutex 
-    }
+    delete_current_session();
 
-    if (last_err)
-        su_srv_log_printf("Failed to properly exit shell session");
-    else
-        su_srv_log_printf("SU shell session closed");
-
+    su_srv_log_printf("SU shell session closed");
     return last_err;
 }
 
@@ -214,6 +212,18 @@ int su_srv_exit_shell_session()
 //
 // FORWARDs implementation
 //
+
+int acquire_session_mutex(su_shell_session *session)
+{
+    int last_err = pthread_mutex_trylock(session->shell_sync_mutex);
+    if (last_err)
+    {
+        pthread_cond_signal(session->shell_sync_ready);
+        last_err = pthread_mutex_lock(session->shell_sync_mutex);
+    }
+
+    return last_err;
+}
 
 
 void *session_handler_fn(void * targs)
@@ -255,7 +265,8 @@ void *session_handler_fn(void * targs)
         }
     }
 
-    pthread_exit(0);  
+    //pthread_cond_signal(_su_session->shell_sync_ready); // release lock in case of running exec
+    pthread_exit(NULL);  
 }
 
 int start_shell_process(int fd, su_shell_session *session)
@@ -295,50 +306,38 @@ int start_shell_process(int fd, su_shell_session *session)
 int stop_shell_process(su_shell_session *session)
 {
     int waited = 0;
+    int again = 0;
+    int wstatus;
 
-    if (session->shell_pid)
-    {
-        int again = 0;
-        int wstatus;
+    // send exit command and wait a bit
+    struct timespec req_timeout;
+    req_timeout.tv_sec = 0;
+    req_timeout.tv_nsec = WAIT_CHILD_SLEEP_NSEC;
+    send_exit_command(_su_session);
+    nanosleep(&req_timeout, NULL);
          
-        while ((again < WAIT_CHILD_MAX_RETRY) && (! waited))
+    while ((again < WAIT_CHILD_MAX_RETRY) && (! waited))
+    {
+        // note: we use waitpid()/sleep() as sigtimedwait() is not defined by Android libc
+     
+        if ( (waited = waitpid(session->shell_pid, &wstatus, WNOHANG)) == 0)
         {
-            // note: we use waitpid()/sleep() as sigtimedwait() is not defined by Android libc
-            
-            if ((waited = waitpid(session->shell_pid, &wstatus, WNOHANG)) < 0)
+            if (again++ == 0)
             {
-                if (errno == ECHILD)
-                {
-                    // ok, already dead
-                    waited = session->shell_pid; 
-                }
-                else 
-                {
-                    // retry
-                    waited = 0;
-                    if (again++ == 0)
-                    {
-                        // try to KILL on 1rst retry
-                        su_srv_log_printf("EAGAIN: kill(%d, SIGKILL)", session->shell_pid);
-                        kill(session->shell_pid, SIGKILL);
-                    }
-                    
-                    su_srv_log_printf("EAGAIN: sleep ...");
-                    sleep(WAIT_CHILD_SLEEP_SEC);
-                }
-            }
-            else
-            {
-                // shell process killed/waited
-                waited = session->shell_pid; 
-                session->shell_pid = 0;
+                // try to KILL on 1rst retry
+                su_srv_log_printf("EAGAIN: kill(%d, SIGKILL)", session->shell_pid);
+                kill(session->shell_pid, SIGKILL);
             }
 
-        } // end-while-not-waited 
-        
-    } // end-shell-pid    
+            sleep(WAIT_CHILD_SLEEP_SEC);
+            su_srv_log_printf("EAGAIN: sleep ...");
+        }
+        else if (waited < 0)
+            su_srv_log_perror("Failed to waitpid()");
+
+    } // end-while-not-waited 
     
-    return (waited > 0) ? 0 : -1;
+    return (waited == session->shell_pid ) ? 0 : -1;
 }
 
 int create_handler_thread(su_shell_session *session, void *(* handler_fn)(void *))
@@ -364,34 +363,18 @@ int pth_unblock_sigchld()
     return pthread_sigmask(SIG_SETMASK, &SU_SRV_SIGMASK, NULL);
 }
 
-int destroy_session(su_shell_session *session)
+void send_exit_command(su_shell_session *session)
 {
-    int last_err;
-
-    // sends the exit command to shell process
     su_srv_log_cmdstr(SU_SRV_EXIT_CMD);
     write(session->afun_client_fd, SU_SRV_EXIT_CMD, strlen(SU_SRV_EXIT_CMD));
     write(session->afun_client_fd, "\n", 1);
+}
 
-    // shell process closed
-    if ((last_err = stop_shell_process(session)))
-        su_srv_log_printf("Failed to stop an SU shell, expect a zombie process");
-    else
-    {
-        su_srv_log_printf("SU shell process stopped");
-
-        // stops handler thread
-        if ((! last_err) && (last_err = (pthread_cancel(*session->handler_pth)
-                                || pthread_join(*session->handler_pth, NULL))) )
-            su_srv_log_printf(
-                        "Failed to stop a session handler thread, expect a zombie thread");
-        else
-            su_srv_log_printf("Session handler thread stopped");
-    }
-
-    su_shell_session_delete(session); // will unlock mutex
-
-    return last_err;
+void delete_current_session()
+{
+    su_shell_session *session = _su_session;
+    //_su_session = NULL;
+    //su_shell_session_delete(session); // will unlock mutex
 }
 
 char *find_su_binary()

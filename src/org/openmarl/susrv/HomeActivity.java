@@ -48,15 +48,6 @@ public class HomeActivity extends Activity implements  SuShellAsyncObserver {
     public void onShellInitComplete(SuShell shell) {
         if (shell != null) {
             SuShell.getInstance().exec("id");
-            /*
-            SuShell.getInstance().exec("pwd");
-            SuShell.getInstance().cd();
-            SuShell.getInstance().exec("pwd");
-
-            SuShell.getInstance().updateEnvironment();
-            SuShell.getInstance().importAsset(R.raw.hijack, "bin", "hijack", true);
-            SuShell.getInstance().exec("ls bin");
-            */
         }
     }
 
