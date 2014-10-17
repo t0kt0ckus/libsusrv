@@ -1,4 +1,5 @@
 # libsusrv.so
+# Makefile for non Android debug build.
 # 
 
 SUSRV_IMPL_CFLAGS=-fPIC -c -Wall -g
