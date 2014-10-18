@@ -12,27 +12,18 @@
 
 #include <jni.h>
 
-// org.openmarl.susrv.SuShell.initSuSrv(): initializes a new SU shell session
-//
-// jAppDir: Android application private filesystem root
-//
-// Returns: 0 on success, negative value on error 
-//
 JNIEXPORT jint JNICALL
-    Java_org_openmarl_susrv_SuShell_initSuSrv(JNIEnv * jEnv, jobject jInstance, jstring jAppDir);
+    Java_org_openmarl_susrv_LibSusrv_openShellSession(JNIEnv *jEnv, 
+            jobject jInstance,
+            jstring jPfsRoot);
 
-// org.openmarl.susrv.SuShell.exec():
-//
-// jCommand: the shel command string
-//
-// Returns: the command result code or SU_SRV_CMD_FAILED (-999) when an error occured
-//
 JNIEXPORT jint JNICALL
-    Java_org_openmarl_susrv_SuShell_exec(JNIEnv * jEnv, jobject jInstance, jstring jCommand);
+    Java_org_openmarl_susrv_LibSusrv_exec(JNIEnv *jEnv, jobject jInstance, jstring jCommand);
 
-// org.openmarl.susrv.SuShell.exitSuSrv(): exits current SU shell session
-//
-//
-JNIEXPORT void JNICALL Java_org_openmarl_susrv_SuShell_exitSuSrv(JNIEnv * jEnv, jobject jInstance);
+JNIEXPORT jint JNICALL
+    Java_org_openmarl_susrv_LibSusrv_exitShellSession(JNIEnv *jEnv, jobject jInstance);
   
+JNIEXPORT jint JNICALL
+    Java_org_openmarl_susrv_LibSusrv_isReady(JNIEnv *jEnv, jobject jInstance);
+
 #endif

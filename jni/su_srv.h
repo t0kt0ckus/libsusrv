@@ -16,7 +16,7 @@
 #define SU_SRV_NO_SESSION_ERROR (-9996)
 #define SU_SRV_NO_SYSTEM_SU_ERROR (-9995)
 
-#define SU_SRV_EXIT_CODE_UNKNOWN (-9999)
+#define SU_SRV_EXIT_CODE_UNKNOWN (-9994)
 
 #define SU_SRV_EXIT_CMD "exit"
 
@@ -46,6 +46,7 @@ int su_srv_exec(const char *cmd_str);
 //
 int su_srv_exit_shell_session();
 
+int su_srv_shell_session_ready();
 
 #ifdef __cplusplus
 }

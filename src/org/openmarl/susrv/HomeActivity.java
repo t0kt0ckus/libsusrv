@@ -1,7 +1,16 @@
+/*
+    SuSrv: Android SU native client library
+
+    <t0kt0ckus@gmail.com>
+    (C) 2014
+
+    License GPLv3
+ */
 package org.openmarl.susrv;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 
@@ -41,15 +50,23 @@ public class HomeActivity extends Activity implements  SuShellAsyncObserver {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        SuShell.getInstance().exit();
+        if (mSuShell != null) {
+            mSuShell.exit();
+            mSuShell = null;
+        }
     }
 
     @Override
     public void onShellInitComplete(SuShell shell) {
-        if (shell != null) {
-            SuShell.getInstance().exec("id");
+        if ((mSuShell = shell) != null) {
+            try {
+                mSuShell.exec("id");
+            }
+            catch(SuSrvException e) {
+                Log.d(TAG, e.toString());
+            }
         }
     }
 
-    private static final String TAG = "HomeActivity";
+    private static final String TAG = HomeActivity.class.getSimpleName();
 }

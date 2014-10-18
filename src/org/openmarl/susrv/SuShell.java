@@ -1,11 +1,10 @@
 /*
- * libsusrv: Android SU native client library.
- *
- * <t0kt0ckus@gmail.com>
- * (C) 2014
- *
- * License: GPLv3
- *
+    SuSrv: Android SU native client library
+
+    <t0kt0ckus@gmail.com>
+    (C) 2014
+
+    License GPLv3
  */
 package org.openmarl.susrv;
 
@@ -25,91 +24,75 @@ import java.io.OutputStream;
  */
 public class SuShell {
 
-
-    public static final int SU_SRV_CMD_FAILED = -999;
-
     private final String mBaseDir;
     private final Context mContext;
 
     private SuShell(Context ctx) {
         mContext = ctx;
         mBaseDir = mContext.getFilesDir().getPath();
-
-        if (! initPrivateRootFilesystem()) {
-            throw new IllegalStateException(
-                    "Filesystem initialization error, try to see logcat");
-        }
-        if (initSuSrv(mBaseDir) != 0) {
-            throw new IllegalStateException(
-                    "SuShell initialization error, try to see var/log/libsusrv.log");
-        }
+        initPrivateRootFilesystem();
     }
 
     /**
-     * Opens an SU shell session, creating it if needed.
+     * Accessor to the SU shell session currently bound to the requiring process.
      *
-     * <p>This is a blocking call, to be wrapped into an asynchronous initializer.</p>
+     * @param ctx A context.
      *
-     * @param ctx Any valid context.
+     * @return An shell session ready to accept commands.
      *
-     * @return An initialized SU shell.
-     *
-     * @throws java.lang.IllegalStateException when an initialization error occurs.
+     * @throws SuSrvException When session initialization fails.
      */
-    public static SuShell getInstance(Context ctx) {
+    public static SuShell getInstance(Context ctx) throws SuSrvException {
         if (_instance == null) {
             _instance = new SuShell(ctx);
+            _instance.initNativeSession();
         }
         return _instance;
     }
 
-    /**
-     * Quick accessor to the current SU shell session.
-     *
-     * @return The current SU shell.
-     *
-     * @throws java.lang.IllegalStateException w
+    private void initNativeSession() throws SuSrvException {
+        int opened = LibSusrv.openShellSession(mBaseDir);
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-
-/**
- * Simple client to a native SU shell session.
- *hen the session is uninitialized.
-     */
-    public static SuShell getInstance() {
-        if (_instance == null) {
-            throw new IllegalStateException("The SU shell session is uninitialized");
+        switch(opened) {
+            case LibSusrv.SU_SRV_PFS_ERR:
+                throw new SuSrvException("Failed to initialize (native) private filesystem");
+            case LibSusrv.SU_SRV_SYS_ERR:
+                throw new SuSrvException("Failed to initialize (native) SU shell session");
+            case LibSusrv.SU_SRV_SESSION_EXISTS_ERR:
+                return; // we keep happy with that session
+            case 0:
+                return; // created session
+            default:
+                throw new SuSrvException("Unexpected error during libsusrv initialization");
         }
-
-        return _instance;
     }
 
     /**
-     * Executes a shell command on the current session.
+     * Executes a shell command.
      *
      * @param command The command string.
      *
-     * @return The result code value, as given by <code>$?</code>, or <code>SU_SRV_CMD_FAILED</code>
-     * when an error occurs.
+     * @return The return value specified by {@link org.openmarl.susrv.LibSusrv#exec(String)}.
+     *
+     * @throws SuSrvException When no shell session available
+     * (try {@link #getInstance(android.content.Context)}.
      */
-    public native int exec(String command);
+    public int exec(String command) throws SuSrvException {
+        if (LibSusrv.isReady() != 0) {
+            return LibSusrv.exec(command);
+        }
+        else {
+            _instance = null;
+            throw new SuSrvException("No shell session bound to requiring process");
+        }
+    }
 
     /**
      * Exits the current shell session.
-     *
-     * <p>Any further attempt to use <code>exec()</code> will fail with an
-     * <code>IllegalStateException</code></p>.
-     *
-     * <p>Should be called for eg. on <code>Activity.onDestroy()</code>.</p>
-     *
      */
     public void exit()
     {
-        exitSuSrv();
+        LibSusrv.exitShellSession();
         _instance = null;
     }
 
@@ -125,7 +108,7 @@ import java.io.OutputStream;
      */
     public int importAsset(int rawAssetId, String dirPath, String filename, boolean isExec) {
         byte buf[] = new byte[64];
-            int iBytes = 0;
+        int iBytes = 0;
 
         try {
             initPrivateDir(dirPath);
@@ -169,12 +152,12 @@ import java.io.OutputStream;
      * Updates the shell session environment to include this private filesystem.
      *
      * <p>The private <code>bin</code> and <code>lib</code> directories are added to
-     * <code>PATH</code>, and <code>LD_LIBRARY_PATH</code> (resp.).</p>
+     * <code>PATH</code> (resp.), and <code>LD_LIBRARY_PATH</code>.</p>
      */
     public void updateEnvironment() {
         // update PATH
         String newPATH = String.format("%s/bin:$PATH", mBaseDir);
-        if (exec(String.format("export PATH=%s", newPATH)) == 0) {
+        if (LibSusrv.exec(String.format("export PATH=%s", newPATH)) == 0) {
             Log.i(TAG, String.format("updated PATH: %s", newPATH));
         }
         else {
@@ -182,7 +165,7 @@ import java.io.OutputStream;
         }
         // update LD_LIBRARY_PATH
         String newLD_PATH = String.format("%s/lib", mBaseDir);
-        if (exec(String.format("export LD_LIBRARY_PATH=%s", newLD_PATH)) == 0) {
+        if (LibSusrv.exec(String.format("export LD_LIBRARY_PATH=%s", newLD_PATH)) == 0) {
             Log.i(TAG, String.format("updated LD_LIBRARY_PATH: %s", newLD_PATH));
         }
         else {
@@ -194,7 +177,7 @@ import java.io.OutputStream;
      * Sets the current working directory to the application private filesystem root.
      */
     public void cd() {
-        if (exec(String.format("cd %s", mBaseDir)) == 0) {
+        if (LibSusrv.exec(String.format("cd %s", mBaseDir)) == 0) {
             Log.i(TAG, String.format("updated CWD: %s", mBaseDir));
         }
         else {
@@ -203,83 +186,23 @@ import java.io.OutputStream;
         ;
     }
 
-    private native int initSuSrv(String cwd);
-    private native void exitSuSrv();
-
-    private boolean initPrivateRootFilesystem(){
-        try {
-            // create dirs
-            initPrivateDir("var/log");
-            initPrivateDir("var/run");
-            initPrivateDir("bin");
-            initPrivateDir("lib");
-            Log.i(TAG,
-                    String.format("Initialized private filesystem: %s", this.mBaseDir));
-        }
-        catch(IllegalArgumentException e) {
-            Log.e(TAG, String.format("Failed to initialize local fs: %s", e.toString()));
-            return false;
-        }
-
-        return true;
+    private void initPrivateRootFilesystem(){
+        initPrivateDir("var/log");
+        initPrivateDir("var/run");
+        initPrivateDir("bin");
+        initPrivateDir("lib");
     }
 
     private void initPrivateDir(String privatePath) {
         String dirPath = String.format("%s/%s", this.mBaseDir, privatePath);
         File dirFile = new File(dirPath);
         dirFile.mkdirs();
-
-        if ( !(dirFile.exists()
-                && dirFile.setReadable(true, true)
-                && dirFile.setWritable(true, true)) ) {
-            // THIS SHOULD NOT HAPPEN
-            throw new IllegalArgumentException(
-                    String.format("Failed to initialize private directory: %s",
-                            dirFile.getAbsolutePath()));
-        }
+        dirFile.exists();
+        dirFile.setReadable(true, true);
+        dirFile.setWritable(true, true);
     }
 
-    static {
-        System.loadLibrary("susrv");
-    }
 
     private static SuShell _instance;
-    private static final String TAG = "SuShell";
+    private static final String TAG = SuShell.class.getSimpleName();
 }
-
-// Logcat
-/*
-10-09 11:14:46.309  18008-18021/org.openmarl.susrv D/dalvikvm﹕ Trying to load lib /data/app-lib/org.openmarl.susrv-1/libsusrv.so 0x4290cea8
-10-09 11:14:46.310  18008-18021/org.openmarl.susrv D/dalvikvm﹕ Added shared lib /data/app-lib/org.openmarl.susrv-1/libsusrv.so 0x4290cea8
-10-09 11:14:46.310  18008-18021/org.openmarl.susrv D/dalvikvm﹕ No JNI_OnLoad found in /data/app-lib/org.openmarl.susrv-1/libsusrv.so 0x4290cea8, skipping init
-10-09 11:14:46.317  18008-18021/org.openmarl.susrv I/SuShell﹕ Initialized private filesystem: /data/data/org.openmarl.susrv/files
-10-09 11:14:46.394  18008-18008/org.openmarl.susrv I/SuShellAsyncInit﹕ SU Shell session started successfully
-10-09 11:14:50.010  18008-18008/org.openmarl.susrv I/SuShell﹕ updated CWD: /data/data/org.openmarl.susrv/files
-10-09 11:14:50.012  18008-18008/org.openmarl.susrv I/SuShell﹕ updated PATH: /data/data/org.openmarl.susrv/files/bin:$PATH
-10-09 11:14:50.013  18008-18008/org.openmarl.susrv I/SuShell﹕ updated LD_LIBRARY_PATH: /data/data/org.openmarl.susrv/files/lib
-10-09 11:14:50.039  18008-18008/org.openmarl.susrv I/SuShell﹕ Imported 21972 bytes asset as bin/hijack (rwx)
-*/
-
-// libsusrv.log
-/*
-[su_srv] Initializing libsusrv ...
-[su_srv] Initialized AF_UNIX/SOCK_STREAM socket: /data/data/org.openmarl.susrv/files/var/run/susrv_sock
-[su_srv] Using su binary: /system/xbin/su
-[su_srv] SU shell PID: 18022
-[su_srv] SU shell session initialization's complete
-[su_srv] ------------------------------------------
-# id
-uid=0(root) gid=0(root) context=u:r:init:s0
-# pwd
-/
-# cd /data/data/org.openmarl.susrv/files
-# pwd
-/data/data/org.openmarl.susrv/files
-# export PATH=/data/data/org.openmarl.susrv/files/bin:$PATH
-# export LD_LIBRARY_PATH=/data/data/org.openmarl.susrv/files/lib
-# ls bin
-hijack
-# exit
-[su_srv] Disconnected SU shell process
-[su_srv] SU shell process terminated
-*/

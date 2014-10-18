@@ -73,7 +73,7 @@ static int create_handler_thread(su_shell_session *session, void *(* handler_fn)
 static int start_shell_process(int fd, su_shell_session *session);
 static int stop_shell_process(su_shell_session *session);
 
-static int acquire_session_mutex(su_shell_session *session);
+static int acquire_handler_mutex(su_shell_session *session);
 static void send_exit_command(su_shell_session *session);
 static void delete_current_session();
 
@@ -232,12 +232,17 @@ int su_srv_exit_shell_session()
     return last_err;
 }
 
+int su_srv_shell_session_ready() 
+{
+    return (_su_session != NULL) ? 1 :0;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////
 //
 // FORWARDs implementation
 //
 
-int acquire_session_mutex(su_shell_session *session)
+int acquire_handler_mutex(su_shell_session *session)
 {
     int last_err = pthread_mutex_trylock(session->shell_sync_mutex);
     if (last_err)
@@ -403,7 +408,7 @@ void send_exit_command(su_shell_session *session)
 
 void delete_current_session()
 {
-    if (acquire_session_mutex(_su_session))
+    if (acquire_handler_mutex(_su_session))
     {
         su_srv_log_printf(
                 "Failed to acquire lock before deleting session, expect zombie mutexes !");
