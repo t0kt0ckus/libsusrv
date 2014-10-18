@@ -94,60 +94,74 @@ static sigset_t SU_SRV_SIGMASK;
 
 int su_srv_open_shell_session(const char *pfs_root)
 {
-    if (_su_session)
-        return SU_SRV_SESSION_ALREADY_OPEN_ERROR;
-
-    if (su_srv_pfs_init(pfs_root))
-        return SU_SRV_PFS_ERROR;
-
-    pid_t owner_pid = getpid();
-    su_shell_session *session;
-   
-    su_srv_log_init(pfs_root, owner_pid);
-
-    if ((session = su_shell_session_new(pfs_root, owner_pid)) == NULL)
-        return SU_SRV_SYSTEM_ERROR;
-
-    su_srv_log_printf("Initializing SU shell session:");
-    su_srv_log_printf("owner PID: %d", session->owner_pid);
-    su_srv_log_printf("AF UNIX path: %s", session->afun_rdv_addr.sun_path);
-
-    int last_err = 0;
-
-    int peer_fd = su_shell_session_af_un_rdv(session);
-    if (peer_fd > 0)
-    {
-        su_srv_log_printf("AF UNIX rendez-vous complete");
-        if ((last_err = start_shell_process(peer_fd, session)))
-        {
-            su_srv_log_printf("Failed to create SU shell child process !");
-        }
-        else
-        {
-            su_srv_log_printf("Created SU shell child process (PID: %d)", session->shell_pid);
-
-            if ((last_err = create_handler_thread(session, session_handler_fn)))
-            {
-                su_srv_log_printf("Failed to create handler loop's thread !");
-
-                // when unable to start associated handler loop, stops the shell process
-                stop_shell_process(session);
-            }
-        } // end-of shell subprocess valid
-
-        close(peer_fd);
-    } // end-of un_peer_fd valid
-
+    int last_err = pthread_mutex_lock(&_su_session_mutex);
     if (last_err)
     {
-        su_srv_log_printf("Failed to initialize SU shell session !");
-        su_shell_session_delete(session);
+        su_srv_log_printf("Warning, failed to initiate session startup");
     }
     else
     {
-        su_srv_log_printf("SU shell session initialization complete");
-        _su_session = session;
-    }
+        if (_su_session)
+            last_err = SU_SRV_SESSION_ALREADY_OPEN_ERROR;
+        else
+        {
+            if (su_srv_pfs_init(pfs_root))
+                last_err = SU_SRV_PFS_ERROR;
+            else
+            {
+                pid_t owner_pid = getpid();
+                su_shell_session *session;
+   
+                su_srv_log_init(pfs_root, owner_pid);
+
+                if ((session = su_shell_session_new(pfs_root, owner_pid)) == NULL)
+                    last_err = SU_SRV_SYSTEM_ERROR;
+                else
+                {
+                    su_srv_log_printf("Initializing SU shell session:");
+                    su_srv_log_printf("owner PID: %d", session->owner_pid);
+                    su_srv_log_printf("AF UNIX path: %s", session->afun_rdv_addr.sun_path);
+
+                    int peer_fd = su_shell_session_af_un_rdv(session);
+                    if (peer_fd > 0)
+                    {
+                        su_srv_log_printf("AF UNIX rendez-vous complete");
+
+                        if ((last_err = start_shell_process(peer_fd, session)))
+                            su_srv_log_printf("Failed to create SU shell child process !");
+                        else
+                        {
+                            su_srv_log_printf("Created SU shell child process (PID: %d)",
+                                    session->shell_pid);
+
+                            if ((last_err = create_handler_thread(session, session_handler_fn)))
+                            {
+                                su_srv_log_printf("Failed to create handler loop's thread !");
+                                // when unable to start handler loop, stops shell process
+                                stop_shell_process(session);
+                            }
+                        } // end-of shell subprocess valid
+
+                        close(peer_fd);
+                    } // end-of un_peer_fd valid
+                
+                    if (last_err)
+                    {
+                        su_srv_log_printf("Failed to initialize SU shell session !");
+                        su_shell_session_delete(session);
+                    }
+                    else
+                    {
+                        su_srv_log_printf("SU shell session initialization complete");
+                        _su_session = session;
+                    }
+
+                } // end-of session allocated
+            } // end-of pfs error
+        } // end-of attempt to create session
+
+        pthread_mutex_unlock(&_su_session_mutex);
+    } // end-of lock
 
     return last_err;
 }
@@ -391,12 +405,13 @@ void delete_current_session()
 {
     if (acquire_session_mutex(_su_session))
     {
-        su_srv_log_printf("Failed to acquire lock on exit, expect zombie mutexes !");
+        su_srv_log_printf(
+                "Failed to acquire lock before deleting session, expect zombie mutexes !");
     }
 
     su_shell_session *session = _su_session;
     _su_session = NULL;
-    su_shell_session_delete(session); // will unlock mutex
+    su_shell_session_delete(session);
 }
 
 char *find_su_binary()
