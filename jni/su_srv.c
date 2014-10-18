@@ -82,9 +82,9 @@ static void delete_current_session();
 //
 //                                         State
 
-static su_shell_session *_su_session = NULL;
+static su_shell_session *_su_session;
+static pthread_mutex_t _su_session_mutex = PTHREAD_MUTEX_INITIALIZER;
 static sigset_t SU_SRV_SIGMASK;
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -184,25 +184,35 @@ int su_srv_exec(const char *cmd_str)
 
 int su_srv_exit_shell_session()
 {
-    if (! _su_session)
+
+    int last_err = pthread_mutex_lock(&_su_session_mutex);
+    if (last_err)
     {
-        su_srv_log_printf("Ignored exit(), no session");
-        return SU_SRV_NO_SESSION_ERROR;
+        su_srv_log_printf("Failed to initiate session shutdown");
     }
-    int last_err;
-
-    if ((last_err = stop_shell_process(_su_session)))
-        su_srv_log_printf("Failed to stop SU shell, expect a zombie process !");
-
-    if ( (last_err = pthread_join(*_su_session->handler_pth, NULL)) )
-            su_srv_log_printf("Failed to join(), expect a zombie thread !");
-
-    if ( (last_err = acquire_session_mutex(_su_session)) )
+    else
     {
-        su_srv_log_printf("Failed to acquire lock on exit, expect zombie mutexes !");
+        if (! _su_session)
+        {
+            su_srv_log_printf("Ignored exit(), no session");
+            last_err = SU_SRV_NO_SESSION_ERROR;
+        }
+        else
+        {
+            su_srv_log_printf("SU shell sesion shutdown ...");
+
+            if ((last_err = stop_shell_process(_su_session)))
+                su_srv_log_printf("Failed to stop SU shell, expect a zombie process !");
+
+            if ( (last_err = pthread_join(*_su_session->handler_pth, NULL)) )
+                su_srv_log_printf("Failed to join(), expect a zombie thread !");
+
+            delete_current_session();
+        }
+
+        pthread_mutex_unlock(&_su_session_mutex);
     }
 
-    delete_current_session();
 
     su_srv_log_printf("SU shell session closed");
     return last_err;
@@ -265,7 +275,14 @@ void *session_handler_fn(void * targs)
         }
     }
 
-    //pthread_cond_signal(_su_session->shell_sync_ready); // release lock in case of running exec
+    // when NOT on exiting upon su_srv_exit_session(), cleanup session here
+    if (pthread_mutex_trylock(&_su_session_mutex) != EBUSY)
+    {
+        su_srv_log_printf("Warning, discarding session upon unexpected shell process exit");
+        delete_current_session();
+
+        pthread_mutex_unlock(&_su_session_mutex);
+    }
     pthread_exit(NULL);  
 }
 
@@ -372,9 +389,14 @@ void send_exit_command(su_shell_session *session)
 
 void delete_current_session()
 {
+    if (acquire_session_mutex(_su_session))
+    {
+        su_srv_log_printf("Failed to acquire lock on exit, expect zombie mutexes !");
+    }
+
     su_shell_session *session = _su_session;
-    //_su_session = NULL;
-    //su_shell_session_delete(session); // will unlock mutex
+    _su_session = NULL;
+    su_shell_session_delete(session); // will unlock mutex
 }
 
 char *find_su_binary()
