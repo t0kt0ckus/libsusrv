@@ -71,11 +71,64 @@ where `<app dir>` is the root of the embedding application private filesystem as
 Build
 ===
 
+Obvisouly, both Android SDK and NDK must be installed, and the `ANDROID_SDK` and `ANDROID_NDK` environment variables propertly set.
 
+To build a library JAR for all architectures:
+```
+$ git clone https://github.com/t0kt0ckus/libsusrv.git
+$ cd libsusrv
+$ ./make.sh 
+[armeabi-v7a] Compile thumb  : susrv <= su_srv.c
+[armeabi-v7a] Compile thumb  : susrv <= su_srv_jni.c
+[armeabi-v7a] Compile thumb  : susrv <= su_srv_log.c
+[armeabi-v7a] Compile thumb  : susrv <= su_srv_pfs.c
+[armeabi-v7a] Compile thumb  : susrv <= su_shell_session.c
+[armeabi-v7a] SharedLibrary  : libsusrv.so
+[armeabi-v7a] Install        : libsusrv.so => libs/armeabi-v7a/libsusrv.so
+[armeabi] Compile thumb  : susrv <= su_srv.c
+[armeabi] Compile thumb  : susrv <= su_srv_jni.c
+[armeabi] Compile thumb  : susrv <= su_srv_log.c
+[armeabi] Compile thumb  : susrv <= su_srv_pfs.c
+[armeabi] Compile thumb  : susrv <= su_shell_session.c
+[armeabi] SharedLibrary  : libsusrv.so
+[armeabi] Install        : libsusrv.so => libs/armeabi/libsusrv.so
+[x86] Compile        : susrv <= su_srv.c
+[x86] Compile        : susrv <= su_srv_jni.c
+[x86] Compile        : susrv <= su_srv_log.c
+[x86] Compile        : susrv <= su_srv_pfs.c
+[x86] Compile        : susrv <= su_shell_session.c
+[x86] SharedLibrary  : libsusrv.so
+[x86] Install        : libsusrv.so => libs/x86/libsusrv.so
+[mips] Compile        : susrv <= su_srv.c
+[mips] Compile        : susrv <= su_srv_jni.c
+[mips] Compile        : susrv <= su_srv_log.c
+[mips] Compile        : susrv <= su_srv_pfs.c
+[mips] Compile        : susrv <= su_shell_session.c
+[mips] SharedLibrary  : libsusrv.so
+[mips] Install        : libsusrv.so => libs/mips/libsusrv.so
+  adding: org/openmarl/susrv/SuShell.class (deflated 47%)
+  adding: org/openmarl/susrv/LibSusrv.class (deflated 37%)
+  adding: org/openmarl/susrv/SuShellAsyncInit.class (deflated 49%)
+  adding: org/openmarl/susrv/SuShellAsyncObserver.class (deflated 25%)
+  adding: org/openmarl/susrv/SuSrvException.class (deflated 43%)
+  adding: lib/armeabi/libsusrv.so (deflated 58%)
+  adding: lib/armeabi-v7a/libsusrv.so (deflated 58%)
+  adding: lib/mips/libsusrv.so (deflated 91%)
+  adding: lib/x86/libsusrv.so (deflated 63%)
+Multi-arch library archive: /marl/git/t0kt0ckus/libsusrv/dist/libsusrv.jar  
+```
 
-Developer's guide (native C)
+Then, just copy `dist/libsusrv.jar` to the `lib` directory of the client Android application (the exact location depends upon the development tools suite).
+
+Rem: this script also generates the Java API documentation to the `dist/api` directory.
+
+As the actual build configuration is defined through `Android.mk` and `Applciation.mk`, one may also invoke directly the NDK tools as she uses to.
+A standard `Makefile` is also given, that permits to build the shared library to target a non Android (but POSIX) context.
+
+Developer's guide
 ===
 
-Developer's guide (Java)
-===
+We'll detail here only the standard Android application developer's point of view.
+
+
 
