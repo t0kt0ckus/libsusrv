@@ -17,6 +17,8 @@ import android.util.Log;
  *
  * <p>To be notified of SU shell initialization completion, the activity should implement
  * {@link org.openmarl.susrv.SuShellAsyncObserver}.</p>
+ *
+ * @author t0kt0ckus
  */
 public class SuShellAsyncInit extends AsyncTask<Void,Void,SuShell> {
 

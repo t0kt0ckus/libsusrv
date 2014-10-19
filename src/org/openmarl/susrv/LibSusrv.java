@@ -11,6 +11,7 @@ package org.openmarl.susrv;
 /**
  * Represents the native <code>libsusrv.so</code> API available via JNI.
  *
+ * @author t0kt0ckus
  */
 public class LibSusrv {
 

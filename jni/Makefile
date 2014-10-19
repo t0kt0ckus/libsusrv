@@ -36,7 +36,6 @@ clean:
 	rm -f $(SUSRV_SO_FILE)
 	rm -f $(SUSRV_CLIENT_FILE)
 	rm -f *~
-	rm -rf var
 
 all: clean libsusrv.so client
 

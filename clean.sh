@@ -1,11 +1,17 @@
 #!/bin/sh
 
-cd jni
-ndk-build clean
-cd ..
+M_ROOT_DIR=`pwd`
 
-rm -rf dist
-rm -rf obj
-rm -rf libs
- 
+TMP_DIR=$M_ROOT_DIR/tmp
+rm -rf $TMP_DIR
+
+DIST_DIR=$M_ROOT_DIR/dist
+rm -rf $DIST_DIR
+
+OBJ_DIR=$M_ROOT_DIR/obj
+rm -rf $OBJ_DIR
+
+LIBS_DIR=$M_ROOT_DIR/libs
+rm -rf $LIBS_DIR
+
 

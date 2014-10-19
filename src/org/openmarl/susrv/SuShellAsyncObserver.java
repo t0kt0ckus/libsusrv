@@ -10,6 +10,8 @@ package org.openmarl.susrv;
 
 /**
  * Observer interface for {@link org.openmarl.susrv.SuShellAsyncInit}.
+ *
+ * @author t0kt0ckus
  */
 public interface SuShellAsyncObserver {
 

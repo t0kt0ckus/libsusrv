@@ -21,6 +21,7 @@ import java.io.OutputStream;
 /**
  * Simple client to a native SU shell session.
  *
+ * @author t0kt0ckus
  */
 public class SuShell {
 
