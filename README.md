@@ -185,8 +185,11 @@ Command strings execution may be queued by wrapping `exec()` calls within distin
 A session is invalidated either normaly when `SuShell.exit()` is called, or when the child shell process terminates abnormally. In both situations, one can safely initiate a new session by calling `SuShell.getInstance(context)` again.
 
 
-Developer's guide
+Example
 ===
+
+This example is available in the `org.openmarl.susrv.example` package.
+
 
 We consider an activity like bellow:
 
