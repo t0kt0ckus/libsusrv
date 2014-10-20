@@ -232,9 +232,9 @@ int su_srv_exit_shell_session()
     return last_err;
 }
 
-int su_srv_shell_session_ready() 
+int su_srv_shell_session_stat() 
 {
-    return (_su_session != NULL) ? 1 :0;
+    return (_su_session != NULL);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////

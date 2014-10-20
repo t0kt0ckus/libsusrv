@@ -24,6 +24,6 @@ JNIEXPORT jint JNICALL
     Java_org_openmarl_susrv_LibSusrv_exitShellSession(JNIEnv *jEnv, jobject jInstance);
   
 JNIEXPORT jint JNICALL
-    Java_org_openmarl_susrv_LibSusrv_isReady(JNIEnv *jEnv, jobject jInstance);
+    Java_org_openmarl_susrv_LibSusrv_stat(JNIEnv *jEnv, jobject jInstance);
 
 #endif

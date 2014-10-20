@@ -43,10 +43,11 @@ int su_srv_open_shell_session(const char * pfs_root);
 int su_srv_exec(const char *cmd_str);
 
 /// su_srv_exit_shell_session(): Exits the shell session currently owned by this process, if any.
-//
+///
 int su_srv_exit_shell_session();
 
-int su_srv_shell_session_ready();
+/// su_srv_shell_session_stat(): Tells whether a shell session is currently owned by this process.
+int su_srv_shell_session_stat();
 
 #ifdef __cplusplus
 }
