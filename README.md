@@ -183,3 +183,65 @@ Command strings execution may be queued by wrapping `exec()` calls within distin
 **Session termination**
 
 A session is invalidated either normaly when `SuShell.exit()` is called, or when the child shell process terminates abnormally. In both situations, one can safely initiate a new session by calling `SuShell.getInstance(context)` again.
+
+
+Developer's guide
+===
+
+We consider an activity like bellow:
+
+```java
+public class SomeActivity extends Activity implements SuShellAsyncObserver {
+
+    private SuShell mSuShell;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_home);
+
+        new SuShellAsyncInit(this).execute();
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mSuShell != null) {
+            mSuShell.exit();
+            mSuShell = null;
+        }
+    }
+    
+    @Override
+    public void onShellInitComplete(SuShell suShell) {
+        mSuShell = suShell;
+
+        if (mSuShell != null) {
+            Log.d(TAG, "SU shell session successfully initialized");
+            try {
+                int rval = mSuShell.exec("id"); // rval will have the value 0
+            }
+            catch(NoShellSessionError e) {
+                mSuShell = null;
+                Log.w(TAG, "SU shell session has just been invalidated, no luck");
+            }
+        }
+        else
+            Log.e(TAG, "Failed to initialize SU shell session");
+    }
+}
+```
+
+This will produce the log file bellow:
+```
+root@falcon_umts:/ # cat /data/data/org.openmarl.susrvexample/files/var/log/su_session-10729.log
+[su_srv] Initializing SU shell session:
+[su_srv] owner PID: 10729
+[su_srv] AF UNIX path: /data/data/openmarl.org.susrvexample/files/var/run/su_session-10729
+[su_srv] AF UNIX rendez-vous complete
+[su_srv] Found system SU binary: /system/xbin/su
+[su_srv] Created SU shell child process (PID: 10753)
+[su_srv] SU shell session initialization complete
+# id
+uid=0(root) gid=0(root) context=u:r:init:s0
+```
