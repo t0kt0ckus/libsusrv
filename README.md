@@ -240,7 +240,7 @@ This will produce the log file bellow:
 root@falcon_umts:/ # cat /data/data/org.openmarl.susrvexample/files/var/log/su_session-10729.log
 [su_srv] Initializing SU shell session:
 [su_srv] owner PID: 10729
-[su_srv] AF UNIX path: /data/data/openmarl.org.susrvexample/files/var/run/su_session-10729
+[su_srv] AF UNIX path: /data/data/org.openmarl.susrvexample/files/var/run/su_session-10729
 [su_srv] AF UNIX rendez-vous complete
 [su_srv] Found system SU binary: /system/xbin/su
 [su_srv] Created SU shell child process (PID: 10753)
