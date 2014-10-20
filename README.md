@@ -1,23 +1,20 @@
 libsusrv
 =
 
-An Android native SU client library.
+A simple native Android SU client library.
 
-This native library provides priviledged shell sessions on any Android system where a suitable SU application is installed. It consists of the shared library (`libsusrv.so`) for any considered architecture, and a class (`org.openmarl.susrv.LibSusrv`) that represents the JNI-exported API.
+This native library provides priviledged shell sessions on any Android system where a suitable SU application is installed. It consists of the shared library (`libsusrv.so`) for any considered architecture, and the `org.openmarl.susrv.LibSusrv` class that publish the JNI-exported API.
 
-A more friendly *session level* API is provided by `org.openmarl.susrv.SuShell`.
+This library:
+- forks a single SU Shell child process per Android application, with which it then communicates through a local UNIX socket - if the shell process terminates abnormaly, the session is properly destroyed, and a new one can be initialized
+- permits to execute any Shell *command string*, whether it is a *Simple Command*, a *Pipeline*, a *List* or a *Compound Command*, as specified by the relevant man page
+- permits access to the exit code returned by the *command string*
+- permits access to what would be the output produced on a controlling terminal
+- executes the *command strings* in the order they are submitted
+- is accessible from both native C and Java code
 
-This library should:
-- permit to execute any Shell *command string*, whether it is a *Simple Command*, a *Pipeline*, a *List* or a *Compound Command*, as specified by the relevant man page
-- permit to execute any Shell *command string*, that would produce an arbitrary length output on a controlling terminal (this is actually limited by the available disk space since this output is written to a log file)
-- permit access to the exit code returned by the *command string*
-- permit access to what would be the output produced on a controlling terminal
-- execute the *command strings* in the order they are submitted
-- prevent unneeded process/thread creation and cleanup, allowing the blocking API `LibSusrv.exec()` call latency to depend only upon the *command string* execution time
-- be accessible from native code (see `jni/su_srv.h`)
- 
-**Disclaimer:** Great documentation and examples, targeted to developers that need to integrate priviledged commands execution from an Android application, are maintained by Chainfire at [libsuperuser](https://github.com/Chainfire/libsuperuser). The available `libsuperuser` library may offer more features and be more flexible that this one. I've written this simple trick because I feel it may better suit my present and future needs, by focusing on some few simple aspects. I also admit that the choice of a native library may not provide any sensible performance benefit in most situations, though in some rare ones implementation's details may produce more or less acceptable behaviors. 
- 
+**Disclaimer:** Great documentation and examples, targeted to developers that need to integrate priviledged commands execution from an Android application, are maintained by Chainfire at [libsuperuser](https://github.com/Chainfire/libsuperuser). The available `libsuperuser` library may offer more features and be more flexible than this one. I've written this simple trick because I feel it better suits my present requirements, and I'm now just sharing some code. I also admit that the choice of a native library may not provide any sensible performance benefit in most situations, this wasn't a motivation here.
+
 **License**
 
 ```
@@ -47,21 +44,26 @@ The library seems to work fine with Chainfire's [SuperSU](http://www.chainfire.e
 Overview
 ===
 
-According to Chainfire's [How-To SU](http://su.chainfire.eu/), in order to support most of the wildely adopted SU applications, and to avoid spawning an ephemeral `su` process upon each command string execution, we should fork a single shell, to which we'll write command strings, and from which we'll read what would be the output produced on a controlling terminal.
+According to Chainfire's [How-To SU](http://su.chainfire.eu/), in order to support most of the wildely adopted SU applications, and to avoid spawning an ephemeral `su` process upon each command string execution, we may choose to fork a single shell, to which we'll write command strings, and from which we'll read back what would be the output produced on a controlling terminal.
 
-The actual workflow is given bellow:
+This is implemented through native POSIX primitives, and as such, a Shell session comprises:
+- a running `su` child process
+- a local UNIX socket to communicate with
+- a thread that consumes and interpret the socket output
+- mutexes to synchronize things
+ 
+And the API is very simple:
+- and `init()` call, that initializes a session as described above
+- an `exec()` call, that permits to execute command strings, blocking untill the command exit code is available
+- an `exit()` call, that terminates the shell process and releases the session resources
 
-1. a process requests an SU shell session's initialization
-2. `libsusrv` creates the appropriate a `su` process, connected to a local UNIX socket
-3. `libsusrv` creates a native handler thread, to read what would be the output produced on a controlling terminal
-4. this shell session is now bound to the requesting process
-5. whenever an `SuShell.exec()` call occurs on the requesting process, the calling thread writes the command string to the local socket, and blocks ...
-6. untill the handler thread delivers the command exit code back to the appropriate thread
-7. when either the `su` process dies, or `SuShell.exit()` is called, the session is destroyed the best we can to avoid *zombie* sockets, processes, threads, or mutexes ;-)
+Though the library's implementation allows client code to use threads to *queue* commands to be executed, preserving order of submit, keep in mind that there's a unique shell child process per Android application to execute these commands.
+
+(Technicaly, one child SU shell may exist per process that loads the `libsusrv.so` shared library.)
 
 A SU shell session opens two files:
-- `<app dir>/var/log/su_session-<pid>.log`: guess what ... contains some debug information and the *what would be the output produced on a controlling terminal*
-- `<app dir>/var/run/su_session-<pid>`: which is the AF UNIX address `sun_path` of the rendez-vous socket, that should be unlinked as soon as the client peer connection to the shell process is established
+- `<app dir>/var/log/su_session-<pid>.log`: contains some debug information and what would be the output produced on a controlling terminal
+- `<app dir>/var/run/su_session-<pid>`: which is the AF UNIX address `sun_path` of the rendez-vous socket, that will be unlinked as soon as the client peer connection to the shell process is established or closed, so it should be an ephemeral file
 
 where `<app dir>` is the root of the embedding application private filesystem as answered by `android.content.Context.getFilesDir().getPath()`, usually `/data/data/<application package>/files`.
 
@@ -69,9 +71,64 @@ where `<app dir>` is the root of the embedding application private filesystem as
 Build
 ===
 
-Developer's guide (native C)
+Obvisouly, both Android SDK and NDK must be installed, and the `ANDROID_SDK` and `ANDROID_NDK` environment variables propertly set.
+
+To build a library JAR for all architectures:
+```
+$ git clone https://github.com/t0kt0ckus/libsusrv.git
+$ cd libsusrv
+$ ./make.sh 
+[armeabi-v7a] Compile thumb  : susrv <= su_srv.c
+[armeabi-v7a] Compile thumb  : susrv <= su_srv_jni.c
+[armeabi-v7a] Compile thumb  : susrv <= su_srv_log.c
+[armeabi-v7a] Compile thumb  : susrv <= su_srv_pfs.c
+[armeabi-v7a] Compile thumb  : susrv <= su_shell_session.c
+[armeabi-v7a] SharedLibrary  : libsusrv.so
+[armeabi-v7a] Install        : libsusrv.so => libs/armeabi-v7a/libsusrv.so
+[armeabi] Compile thumb  : susrv <= su_srv.c
+[armeabi] Compile thumb  : susrv <= su_srv_jni.c
+[armeabi] Compile thumb  : susrv <= su_srv_log.c
+[armeabi] Compile thumb  : susrv <= su_srv_pfs.c
+[armeabi] Compile thumb  : susrv <= su_shell_session.c
+[armeabi] SharedLibrary  : libsusrv.so
+[armeabi] Install        : libsusrv.so => libs/armeabi/libsusrv.so
+[x86] Compile        : susrv <= su_srv.c
+[x86] Compile        : susrv <= su_srv_jni.c
+[x86] Compile        : susrv <= su_srv_log.c
+[x86] Compile        : susrv <= su_srv_pfs.c
+[x86] Compile        : susrv <= su_shell_session.c
+[x86] SharedLibrary  : libsusrv.so
+[x86] Install        : libsusrv.so => libs/x86/libsusrv.so
+[mips] Compile        : susrv <= su_srv.c
+[mips] Compile        : susrv <= su_srv_jni.c
+[mips] Compile        : susrv <= su_srv_log.c
+[mips] Compile        : susrv <= su_srv_pfs.c
+[mips] Compile        : susrv <= su_shell_session.c
+[mips] SharedLibrary  : libsusrv.so
+[mips] Install        : libsusrv.so => libs/mips/libsusrv.so
+  adding: org/openmarl/susrv/SuShell.class (deflated 47%)
+  adding: org/openmarl/susrv/LibSusrv.class (deflated 37%)
+  adding: org/openmarl/susrv/SuShellAsyncInit.class (deflated 49%)
+  adding: org/openmarl/susrv/SuShellAsyncObserver.class (deflated 25%)
+  adding: org/openmarl/susrv/SuSrvException.class (deflated 43%)
+  adding: lib/armeabi/libsusrv.so (deflated 58%)
+  adding: lib/armeabi-v7a/libsusrv.so (deflated 58%)
+  adding: lib/mips/libsusrv.so (deflated 91%)
+  adding: lib/x86/libsusrv.so (deflated 63%)
+Multi-arch library archive: /marl/git/t0kt0ckus/libsusrv/dist/libsusrv.jar  
+```
+
+Then, just copy `dist/libsusrv.jar` to the `lib` directory of the client Android application (the exact location depends upon the development tools suite).
+
+Rem: this script also generates the Java API documentation to the `dist/api` directory.
+
+As the actual build configuration is defined through `Android.mk` and `Applciation.mk`, one may also invoke directly the NDK tools as she uses to.
+A standard `Makefile` is also given, that permits to build the shared library to target a non Android (but POSIX) context.
+
+Developer's guide
 ===
 
-Developer's guide (Java)
-===
+We'll detail here only the standard Android application developer's point of view.
+
+
 
