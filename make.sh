@@ -15,10 +15,10 @@ ANDROID_JAR=$ANDROID_SDK/platforms/android-$ANDROID_SDK_LEVEL/android.jar
 #
 M_ROOT_DIR=`pwd`
 TMP_DIR=$M_ROOT_DIR/tmp
-rm -rf $TMP_DIR
+#rm -rf $TMP_DIR
 mkdir -p $TMP_DIR
 DIST_DIR=$M_ROOT_DIR/dist
-rm -rf $DIST_DIR
+#rm -rf $DIST_DIR
 mkdir -p $DIST_DIR
 DIST_JAVADOC=$DIST_DIR/api
 mkdir -p $DIST_JAVADOC
@@ -42,7 +42,7 @@ cp -R libs $TMP_DIR/lib
 
 # org.openmarl.susrv Java package
 #
-javac -d $TMP_DIR -classpath $ANDROID_JAR $M_JAVA_DIR/*/*/*/*.java
+javac -d $TMP_DIR -classpath $ANDROID_JAR $M_JAVA_DIR/*/*/susrv/*.java
 
 # libsusrv.jar
 #
@@ -55,6 +55,6 @@ echo "Multi-arch library archive: ${M_JAR}"
 # doc
 #
 javadoc -d $DIST_JAVADOC -quiet -windowtitle libsusrv -public -author -sourcepath $M_JAVA_DIR -classpath $ANDROID_JAR $M_JAVA_PKG
-cp $M_NATIVE_DIR/su_srv.h $DIST_INCLUDE
+cp $M_NATIVE_DIR/su_srv.h $M_NATIVE_DIR/su_srv_jni.h $DIST_INCLUDE
 cp README.md $DIST_DIR
 
