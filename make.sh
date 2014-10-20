@@ -50,6 +50,7 @@ cd $TMP_DIR
 zip -R ${M_JAR} lib/*/*.so */*/*/*.class
 cd $M_ROOT_DIR
 rm -rf $TMP_DIR
+echo "Multi-arch library archive: ${M_JAR}" 
 
 # doc
 #
