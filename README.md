@@ -15,7 +15,7 @@ This library:
 
 **Note:** This primarily comprises a native shared library (`libsusrv.so`) for any considered architecture, and the definition of a Java object (`org.openmarl.susrv.LibSusrv`) that publishes the JNI-exported API. These components are standard POSIX/JNI stuff and may be used in a non Android context.
 
-**Disclaimer:** Great documentation and examples, targeted to developers that need to integrate priviledged commands execution from an Android application, are maintained by Chainfire at [libsuperuser](https://github.com/Chainfire/libsuperuser). The `libsuperuser` library available there may offer more features and be more flexible than this one. I've written this simple trick because I feel it better suits my present requirements, and I'm now just sharing some code. I also admit that the choice of a native library may not provide any sensible performance benefit in most situations, this wasn't a motivation here.
+**Disclaimer:** Great documentation and examples, targeted to developers that need to integrate priviledged commands execution from an Android application, are maintained by Chainfire at [libsuperuser](https://github.com/Chainfire/libsuperuser). The `libsuperuser` library available there may offer more features and be more flexible than this one. I've written this simple trick because I feel it better suits my present requirements, and I share this code here. I also admit that the choice of a native library may not provide any sensible performance benefit in most situations, this wasn't a motivation here.
 
 **License**
 
@@ -56,7 +56,7 @@ This is implemented through native POSIX primitives, and as such, a Shell sessio
 - mutexes to synchronize things
  
 And the API is very simple:
-- and `init()` call, that initializes a session as described above
+- an `init()` call, that initializes a session as described above
 - an `exec()` call, that permits to execute command strings, blocking untill the command exit code is available
 - an `exit()` call, that terminates the shell process and releases the session resources
 
@@ -156,7 +156,7 @@ We'll detail bellow the Android application developer's point of view.
 
 To make both the native shared library and the Java API available, one have to:
 - build a suitable JAR archive, for example using the provided `make.sh` script
-- copy `libsusrv.jar` to the `libs` directory of the Android application (this actual location depends upon the development tools chain)
+- copy this file (`libsusrv.jar`) to the `libs` directory of the Android application (this actual location depends upon the development tools chain)
 
 The Java API package is `org.openmarl.susrv`.
 
