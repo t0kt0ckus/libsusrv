@@ -3,17 +3,19 @@ libsusrv
 
 A simple native Android SU client library.
 
-This native library provides priviledged shell sessions on any Android system where a suitable SU application is installed. It consists of the shared library (`libsusrv.so`) for any considered architecture, and the `org.openmarl.susrv.LibSusrv` class that publish the JNI-exported API.
+This library provides priviledged shell sessions on any Android system where a suitable SU application is installed.
 
 This library:
-- forks a single SU Shell child process per Android application, with which it then communicates through a local UNIX socket - if the shell process terminates abnormaly, the session is properly destroyed, and a new one can be initialized
-- permits to execute any Shell *command string*, whether it is a *Simple Command*, a *Pipeline*, a *List* or a *Compound Command*, as specified by the relevant man page
-- permits access to the exit code returned by the *command string*
+- forks a single SU Shell child process per Android application, with which it then communicates through a local UNIX socket 
+- permits to execute Shell *command strings*, where a *command string* may be a *Simple Command*, a *Pipeline*, a *List* or a *Compound Command*, as specified by the relevant man page
+- permits access to the exit code returned by the command string 
 - permits access to what would be the output produced on a controlling terminal
-- executes the *command strings* in the order they are submitted
+- executes the command strings in the order they are submitted
 - is accessible from both native C and Java code
 
-**Disclaimer:** Great documentation and examples, targeted to developers that need to integrate priviledged commands execution from an Android application, are maintained by Chainfire at [libsuperuser](https://github.com/Chainfire/libsuperuser). The available `libsuperuser` library may offer more features and be more flexible than this one. I've written this simple trick because I feel it better suits my present requirements, and I'm now just sharing some code. I also admit that the choice of a native library may not provide any sensible performance benefit in most situations, this wasn't a motivation here.
+**Note:** This primarily comprises a native shared library (`libsusrv.so`) for any considered architecture, and the definition of a Java object (`org.openmarl.susrv.LibSusrv`) that publishes the JNI-exported API. These components are standard POSIX/JNI stuff and may be used in a non Android context.
+
+**Disclaimer:** Great documentation and examples, targeted to developers that need to integrate priviledged commands execution from an Android application, are maintained by Chainfire at [libsuperuser](https://github.com/Chainfire/libsuperuser). The `libsuperuser` library available there may offer more features and be more flexible than this one. I've written this simple trick because I feel it better suits my present requirements, and I'm now just sharing some code. I also admit that the choice of a native library may not provide any sensible performance benefit in most situations, this wasn't a motivation here.
 
 **License**
 
@@ -36,10 +38,11 @@ Requirements
 ===
 
 Requirements are obvious:
-- A rooted Android device, with an installed SU application, that is an application that provides a `su` binary that can spawn priviledged shell sessions. The library will search into the following directories: `/sbin`, `/system/sbin`, `/system/bin`, and `/system/xbin`.
-- The native implementation relies upon stable bionic C APIs, and should apply to most of Android OS versions.
+- A rooted Android device, with an installed SU application, that is an application that provides a `su` binary that can spawn priviledged shell sessions. The library will search into the following directories: `/sbin`, `/system/sbin`, `/system/bin`, and `/system/xbin`, in that order.
+- The native implementation relies upon POSIX C APIs, implemented in bionic, and should apply to most of Android OS versions.
 
 The library seems to work fine with Chainfire's [SuperSU](http://www.chainfire.eu/projects/52/SuperSU/) on Android KitKat 4.x.  
+
 
 Overview
 ===
@@ -49,7 +52,7 @@ According to Chainfire's [How-To SU](http://su.chainfire.eu/), in order to suppo
 This is implemented through native POSIX primitives, and as such, a Shell session comprises:
 - a running `su` child process
 - a local UNIX socket to communicate with
-- a thread that consumes and interpret the socket output
+- a thread that consumes and interpret the socket I/O
 - mutexes to synchronize things
  
 And the API is very simple:
@@ -57,15 +60,15 @@ And the API is very simple:
 - an `exec()` call, that permits to execute command strings, blocking untill the command exit code is available
 - an `exit()` call, that terminates the shell process and releases the session resources
 
-Though the library's implementation allows client code to use threads to *queue* commands to be executed, preserving order of submit, keep in mind that there's a unique shell child process per Android application to execute these commands.
+Though the library's implementation allows client code to use threads to *queue* command strings, preserving order of submit, keep in mind that there's a unique shell child process per Android application to execute these commands.
 
 (Technicaly, one child SU shell may exist per process that loads the `libsusrv.so` shared library.)
 
 A SU shell session opens two files:
-- `<app dir>/var/log/su_session-<pid>.log`: contains some debug information and what would be the output produced on a controlling terminal
-- `<app dir>/var/run/su_session-<pid>`: which is the AF UNIX address `sun_path` of the rendez-vous socket, that will be unlinked as soon as the client peer connection to the shell process is established or closed, so it should be an ephemeral file
+- `<app-dir>/var/log/su_session-<pid>.log`: contains some debug information and what would be the output produced on a controlling terminal
+- `<app-dir>/var/run/su_session-<pid>`: which is the UNIX address `sun_path` of the rendez-vous socket, that will be unlinked as soon as the client peer connection to the shell process is established or denied, so it should be ephemeral
 
-where `<app dir>` is the root of the embedding application private filesystem as answered by `android.content.Context.getFilesDir().getPath()`, usually `/data/data/<application package>/files`.
+where `<app-dir>` is the root of the embedding application private filesystem as answered by `android.content.Context.getFilesDir().getPath()`, usually `/data/data/<application-package>/files`.
 
 
 Build
@@ -73,7 +76,7 @@ Build
 
 Obvisouly, both Android SDK and NDK must be installed, and the `ANDROID_SDK` and `ANDROID_NDK` environment variables propertly set.
 
-To build a library JAR for all architectures:
+To build a library archive for all architectures:
 ```
 $ git clone https://github.com/t0kt0ckus/libsusrv.git
 $ cd libsusrv
@@ -118,17 +121,65 @@ $ ./make.sh
 Multi-arch library archive: /marl/git/t0kt0ckus/libsusrv/dist/libsusrv.jar  
 ```
 
-Then, just copy `dist/libsusrv.jar` to the `lib` directory of the client Android application (the exact location depends upon the development tools suite).
+The produced  `dist/libsusrv.jar` contains:
+```
+// The native shared libraries
+//
++ lib/armeabi/libsusrv.so
++ lib/armeabi-v7a/libsusrv.so
++ lib/mips/libsusrv.so
++ lib/x86/libsusrv.so
 
-Rem: this script also generates the Java API documentation to the `dist/api` directory.
+// The JNI object that publishes the native API
+//
++ org/openmarl/susrv/LibSusrv.class
+
+// Some Android specific more friendly API
+//
++ org/openmarl/susrv/SuShell.class
++ org/openmarl/susrv/SuShellAsyncInit.class
++ org/openmarl/susrv/SuShellAsyncObserver.class
++ org/openmarl/susrv/NoShellSessionError.class
+```
+
+This script also generates the Java API documentation to the `dist/api` directory. And `dist/include` will show the relevant C headers. 
 
 As the actual build configuration is defined through `Android.mk` and `Applciation.mk`, one may also invoke directly the NDK tools as she uses to.
-A standard `Makefile` is also given, that permits to build the shared library to target a non Android (but POSIX) context.
+A standard `Makefile` is also given, that help building the shared library to target a non Android context.
 
 Developer's guide
 ===
 
-We'll detail here only the standard Android application developer's point of view.
+We'll detail bellow the Android application developer's point of view. 
 
+**Installation**
 
+To make both the native shared library and the Java API available, one have to:
+- build a suitable JAR archive, for example using the provided `make.sh` script
+- copy `libsusrv.jar` to the `libs` directory of the Android application (this actual location depends upon the development tools chain)
 
+The Java API package is `org.openmarl.susrv`.
+
+**Session initialization**
+
+Initialization is initiated by a call to the `SuShell.getInstance(context)` static method, which return a `SuShell` instance on success. The native SU shell session represented by this object is then bound to the requesting process.
+
+Keeping a reference to this instance may be a good idea, though any further call to `SuShell.getInstance(null)` will immediately returns the currently bound SU shell session, without any overhead.
+
+Initialization should not occur on the main thread, as the SU shell child process creation may take some time. Instead, have an activity that implement `SuShellAsyncObserver`, and starts an `SuShellAsyncInit` async task from some appropriate point of its life-cycle.
+
+**Executing commands**
+
+Any valid *command string* may be executed using the blocking API call:
+```java
+int rval =  SuShell.getInstance(null).exec(cmd);
+```
+where `rval` is the integer exit code of the command execution sub-process, as returned by `echo $?`. 
+
+If the shell session has not been initialized or has been invalidated, a `NoShellSessionError` exception is thrown.
+
+Command strings execution may be queued by wrapping `exec()` calls within distinct threads: commands will then execute in the order they have been submitted, and each thread will have the appropriate return value delivered.
+
+**Session termination**
+
+A session is invalidated either normaly when `SuShell.exit()` is called, or when the child shell process terminates abnormally. In both situations, one can safely initiate a new session by calling `SuShell.getInstance(context)` again.
