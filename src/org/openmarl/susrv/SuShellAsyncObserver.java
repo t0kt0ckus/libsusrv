@@ -18,7 +18,7 @@ public interface SuShellAsyncObserver {
     /**
      * Notifies the observer about whether a shell session's initialization has succeeded.
      *
-     * @param shell An initialized SU shell session, or <code>null</code> on failure.
+     * @param shell An initialized SU Shell session, or <code>null</code> on failure.
      */
     public void onShellInitComplete(SuShell shell);
 
