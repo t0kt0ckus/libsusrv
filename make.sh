@@ -42,7 +42,7 @@ cp -R libs $TMP_DIR/lib
 
 # org.openmarl.susrv Java package
 #
-javac -d $TMP_DIR -classpath $ANDROID_JAR $M_JAVA_DIR/*/*/susrv/*.java
+#javac -d $TMP_DIR -classpath $ANDROID_JAR $M_JAVA_DIR/*/*/susrv/*.java
 
 # libsusrv.jar
 #
