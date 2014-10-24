@@ -8,6 +8,7 @@
  *
  */
 #include "su_srv.h"
+#include "su_srv_getpid.h"
 #include "su_srv_jni.h"
 
 JNIEXPORT jint JNICALL
@@ -28,6 +29,16 @@ JNIEXPORT jint JNICALL
     const char * cmd_ptstr = (*jEnv)->GetStringUTFChars(jEnv, jCommand, (jboolean *) 0);
     int result = su_srv_exec(cmd_ptstr);
     (*jEnv)-> ReleaseStringUTFChars(jEnv, jCommand, cmd_ptstr);
+    return result;
+}
+
+JNIEXPORT jint JNICALL
+    Java_org_openmarl_susrv_LibSusrv_getpid(JNIEnv *jEnv, jobject jInstance, 
+    jstring jProcname)
+{
+    const char * procname_ptstr = (*jEnv)->GetStringUTFChars(jEnv, jProcname, (jboolean *) 0);
+    int result = su_srv_getpid(procname_ptstr);
+    (*jEnv)-> ReleaseStringUTFChars(jEnv, jProcname, procname_ptstr);
     return result;
 }
 
