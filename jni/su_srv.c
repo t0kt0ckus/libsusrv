@@ -46,7 +46,7 @@ static char * const SU_SHELL_ENVIRONMENT[] = {
 #define EOC_SSCAN "<SU_SRV_EOC>%d\n"
 
 #define WAIT_CHILD_MAX_RETRY 3
-#define WAIT_CHILD_SLEEP_NSEC 250000000
+#define WAIT_CHILD_SLEEP_NSEC (250000000l)
 #define WAIT_CHILD_SLEEP_SEC 1
 
 static char *find_su_binary();
@@ -229,7 +229,7 @@ void *session_handler_fn(void * targs)
     if (pthread_mutex_trylock(_su_session->shell_sync_mutex)) 
     {
         pthread_cond_signal(_su_session->shell_sync_ready);
-        exit_request = pthread_mutex_lock(_su_session->shell_sync_mutex);
+        exit_request = pthread_mutex_trylock(_su_session->shell_sync_mutex);
     }
     if (! exit_request)
     {
