@@ -18,8 +18,8 @@
 
 FILE *su_srv_log_fptr;
 
-static const char *SU_SRV_LOG_FMT = "%s/var/log/su_session-%05d.log";
-static const int SU_SRV_LOG_WLEN = 24 + 5;
+static const char *SU_SRV_LOG_FMT = "%s/var/log/su-%05d.log";
+static const int SU_SRV_LOG_WLEN = 16 + 5;
 
 int su_srv_log_init(const char * pfs_root, int pid)
 {
@@ -30,7 +30,7 @@ int su_srv_log_init(const char * pfs_root, int pid)
     if ((logpath = malloc(sizeof(char) * logpath_len)))
     {
         snprintf(logpath, logpath_len, SU_SRV_LOG_FMT, pfs_root, pid);
-        if ((su_srv_log_fptr = fopen(logpath, "w")))
+        if ((su_srv_log_fptr = fopen(logpath, "a")))
             last_err = 0;
         else
             last_err = errno;

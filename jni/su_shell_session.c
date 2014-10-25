@@ -25,29 +25,13 @@
 #include "su_srv_log.h"
 #include "su_shell_session.h"
 
-///////////////////////////////////////////////////////////////////////////////////////////////
-//
-// Constants
-//
-
-static const char *SESSION_AFUN_FMT = "%s/var/run/su_session-%05d"; 
-static const int SESSION_AFUN_FMT_WLEN = 20 + 5;
+static const char *SESSION_AFUN_FMT = "%s/var/run/su-%05d"; 
+static const int SESSION_AFUN_FMT_WLEN = 12 + 5;
 static const int BUF_INITIAL_SIZE = 32;
-
-///////////////////////////////////////////////////////////////////////////////////////////////
-//
-// FORWARDs definitions
-//
 
 static int init_mutexes(su_shell_session *session);
 static void destroy_mutexes(su_shell_session *session);
 static int init_af_un_address(su_shell_session *session);
-
-///////////////////////////////////////////////////////////////////////////////////////////////
-//
-// API: su_session.h
-//
-///////////////////////////////////////////////////////////////////////////////////////////////
 
 su_shell_session *su_shell_session_new(const char * pfs_root, pid_t owner_pid)
 {

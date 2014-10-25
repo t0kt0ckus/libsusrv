@@ -21,8 +21,7 @@
 extern "C" {
 #endif
 
-/// struct su_shell_session: represents a SU shell session.
-///
+/// Represents a SU shell session.
 ///
 typedef struct su_shell_session 
 {   
@@ -61,30 +60,19 @@ typedef struct su_shell_session
 
 } su_shell_session;
 
-/// su_shell_session_new(): Allocates a new session.
+/// Allocates/initializes a new session.
 /// 
-/// Private filesystem root path set to <pfs_root>
-/// Owner set to calling process PID.
-/// AF UNIX address path: <pfs_root>/var/run/su_srv<owner_pid>
-/// Mutexes initialized unlocked
-///
 /// Returns: a pointer to the new session, NULL on failure.
 ///
 su_shell_session *su_shell_session_new(const char * pfs_root, pid_t owner_pid);
 
-/// su_shell_session_af_un_rdv(su_shell_session *session): establishes the AF UNIX rendez-vous.
+/// AF UNIX rendez-vous.
 ///
 /// Returns: the accepted connection's file descriptor on success, a negative value on failure.
 ///
 int su_shell_session_af_un_rdv(su_shell_session *session);
 
-/// su_shell_session_delete(): Destroys a session
-///
-/// The session mutex should be locked.
-///
-/// - destroy valid mutexes
-/// - close valid descriptors
-/// - free allocated memory 
+/// Destroys a session
 ///
 void su_shell_session_delete(su_shell_session *session);
 
