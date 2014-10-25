@@ -35,7 +35,8 @@ public class SuShellAsyncInit extends AsyncTask<Void,Void,SuShell> {
     /**
      *
      * @param observer
-     * @return
+     *
+     * @return This.
      */
     public SuShellAsyncInit addObserver(SuShellAsyncObserver observer) {
         mObservers.add(observer);

@@ -42,7 +42,7 @@ cp -R libs $TMP_DIR/lib
 
 # org.openmarl.susrv Java package
 #
-#javac -d $TMP_DIR -classpath $ANDROID_JAR $M_JAVA_DIR/*/*/susrv/*.java
+javac -d $TMP_DIR -classpath $ANDROID_JAR $M_JAVA_DIR/*/*/susrv/*.java
 
 # libsusrv.jar
 #
@@ -54,7 +54,8 @@ echo "Multi-arch library archive: ${M_JAR}"
 
 # doc
 #
-javadoc -d $DIST_JAVADOC -quiet -windowtitle libsusrv -public -author -sourcepath $M_JAVA_DIR -classpath $ANDROID_JAR $M_JAVA_PKG
+EXT_JLINKS="http://docs.oracle.com/javase/7/docs/api/"
+javadoc -link $EXT_JLINKS -d $DIST_JAVADOC -quiet -windowtitle libsusrv -public -author -sourcepath $M_JAVA_DIR -classpath $ANDROID_JAR $M_JAVA_PKG
 cp $M_NATIVE_DIR/su_srv.h $M_NATIVE_DIR/su_srv_jni.h $DIST_INCLUDE
 cp README.md $DIST_DIR
 
