@@ -6,9 +6,6 @@ M_ROOT_DIR=`pwd`
 TMP_DIR=$M_ROOT_DIR/tmp
 rm -rf $TMP_DIR
 
-DIST_DIR=$M_ROOT_DIR/dist
-rm -rf $DIST_DIR
-
 OBJ_DIR=$M_ROOT_DIR/obj
 rm -rf $OBJ_DIR
 
