@@ -32,6 +32,17 @@ JNIEXPORT jint JNICALL
     return result;
 }
 
+JNIEXPORT jstring JNICALL
+    Java_org_openmarl_susrv_LibSusrv_getLastTtyRead(JNIEnv *jEnv,
+            jobject jInstance)
+{
+    char *line = su_srv_last_tty_read();
+    if (line)
+        return (*jEnv)->NewStringUTF(jEnv, line);
+    else 
+        return (*jEnv)->NewStringUTF(jEnv, "");
+}
+    
 JNIEXPORT jint JNICALL
     Java_org_openmarl_susrv_LibSusrv_getpid(JNIEnv *jEnv, jobject jInstance, 
     jstring jProcname)

@@ -52,6 +52,12 @@ int su_srv_open_shell_session(const char * pfs_root);
 ///
 int su_srv_exec(const char *cmd_str);
 
+/// Access to the last output line on "terminal".
+///
+/// Returns: the lase line (with LF), or NULL.
+///
+char *su_srv_last_tty_read();
+
 /// Exits the shell session currently bound to this process, if any.
 ///
 /// Returns: O, when an existing session has been successfully closed,

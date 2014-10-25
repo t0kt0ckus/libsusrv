@@ -182,6 +182,14 @@ int su_srv_exit_shell_session()
     return last_err;
 }
 
+char *su_srv_last_tty_read()
+{
+    if (_su_session)
+        return _su_session->last_tty_read;
+
+    return NULL;
+}
+
 int su_srv_shell_session_ping() 
 {
     return (_su_session != NULL);
@@ -209,6 +217,7 @@ void *session_handler_fn(void * targs)
             _su_session->handler_buf[curr_line_offset] = 0;
             curr_line_offset = 0;
 
+            // extract exit code
             if (strstr(_su_session->handler_buf, EOC_TAG))
             {
                 if (sscanf(_su_session->handler_buf,
@@ -219,11 +228,22 @@ void *session_handler_fn(void * targs)
             }
             else
             {
+                // write to log
                 write(fd, _su_session->handler_buf,
                         strlen(_su_session->handler_buf));
+
+                // update last read
+                char *tmp = _su_session->last_tty_read;
+                int sz = strlen(_su_session->handler_buf) + 1;
+                _su_session->last_tty_read = malloc(sizeof(char) * sz);
+                if (_su_session->last_tty_read)
+                    strncpy(_su_session->last_tty_read,
+                            _su_session->handler_buf,
+                            sz);
+                if (tmp) free(tmp);
             }      
         }
-    }
+    } // EOF
 
     int exit_request = 0;
     if (pthread_mutex_trylock(_su_session->shell_sync_mutex)) 
@@ -264,7 +284,8 @@ int shell_start_process(int fd, su_shell_session *session)
 
             dup2(fd,0);
             dup2(0,1);
-            dup2(0,2);
+            // FIXME: we avoid stderr as it messes things up in hanlder queue
+            //dup2(0,2);
             execve(su_binary, params, SU_SHELL_ENVIRONMENT);
     }
     else

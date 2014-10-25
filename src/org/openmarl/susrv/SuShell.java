@@ -271,6 +271,19 @@ public class SuShell {
     }
 
     /**
+     * Answers the last line red on the session terminal.
+     *
+     * @return The last available line, or <code>null</code>.
+     */
+    public String getLastTtyLine() {
+        String lastLine = LibSusrv.getLastTtyRead();
+        if ( (lastLine != null) && lastLine.endsWith("\n"))
+            return lastLine.substring(0, lastLine.length() -1);
+        else
+            return lastLine;
+    }
+
+    /**
      * Within the current SU shell session, changes a file or directory permissions.
      *
      * @param path The file path.

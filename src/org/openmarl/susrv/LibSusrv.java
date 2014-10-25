@@ -81,6 +81,13 @@ public class LibSusrv {
     public static native int ping();
 
     /**
+     * Answers the last line read on the current session "terminal" output.
+     *
+     * @return The las shell output line, or <code>null</code> when not available.
+     */
+    public static native String getLastTtyRead();
+
+    /**
      * Answers the PID of the first process which name matches a search term.
      *
      * <p>This API si specified by the C function <code>su_srv_getpid()</code>.</p>
