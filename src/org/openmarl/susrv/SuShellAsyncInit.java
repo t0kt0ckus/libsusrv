@@ -10,43 +10,55 @@ package org.openmarl.susrv;
 
 import android.content.Context;
 import android.os.AsyncTask;
-import android.util.Log;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * SU shell session asynchronous initializer.
- *
- * <p>To be notified upon SU shell initialization completion, the activity should implement
- * {@link org.openmarl.susrv.SuShellAsyncObserver}.</p>
  *
  * @author t0kt0ckus
  */
 public class SuShellAsyncInit extends AsyncTask<Void,Void,SuShell> {
 
+    private List<SuShellAsyncObserver> mObservers = new ArrayList<SuShellAsyncObserver>();
     private Context mContext;
-    private SuShellAsyncObserver mObserver;
 
     /**
-     * Creates a new initializer.
      *
-     * @param ctx An activity that should implement {@link org.openmarl.susrv.SuShellAsyncObserver}.
+     * @param ctx
      */
     public SuShellAsyncInit(Context ctx) {
         mContext = ctx;
-        if (ctx instanceof SuShellAsyncObserver) {
-            mObserver = (SuShellAsyncObserver) ctx;
-        }
+    }
+
+    /**
+     *
+     * @param observer
+     * @return
+     */
+    public SuShellAsyncInit addObserver(SuShellAsyncObserver observer) {
+        mObservers.add(observer);
+        return this;
+    }
+
+    /**
+     *
+     * @param observer
+     */
+    public void removeObserver(SuShellAsyncObserver observer) {
+        mObservers.remove(observer);
     }
 
     @Override
     protected void onPostExecute(SuShell suShell) {
         super.onPostExecute(suShell);
-        if (mObserver != null) {
-            mObserver.onShellInitComplete(suShell);
-        }
+        for (SuShellAsyncObserver observer : mObservers)
+            observer.onShellInitComplete(suShell);
     }
 
     @Override
     protected SuShell doInBackground(Void... params) {
-        return SuShell.getInstance(mContext);
+        return SuShell.getInstance(mContext, true);
     }
 }
