@@ -407,6 +407,33 @@ public class SuShell {
             return -1;
     }
 
+    /**
+     * Tells whether a valid shell session is currently bound to the requesting process.
+     *
+     * @return <code>true</code> if this is the case.
+     */
+    public boolean ping() {
+        return (LibSusrv.ping() > 0);
+    }
+
+    /**
+     * Enables/disables echo-ing "terminal" output to session log file.
+     *
+     * @param enabled
+     */
+    public void setTtyEcho(boolean enabled) {
+        LibSusrv.setTtyEcho(enabled ? 1 : 0);
+    }
+
+    /**
+     * Tells whether "terminal" echo is enabled on the current shell session.
+     *
+     * @return <code>true</code> when such a session exists and echo is enabled.
+     */
+    public boolean getTtyEcho() {
+        return (LibSusrv.getTtyEcho() > 0);
+    }
+
     private void updatePrivateEnvironment() {
         // PATH
         String newPATH = String.format("%s/bin:$PATH", mPfsRoot);

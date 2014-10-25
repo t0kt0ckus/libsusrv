@@ -51,7 +51,8 @@ typedef struct su_shell_session
     //
     pthread_mutex_t *shell_sync_mutex;
     pthread_cond_t *shell_sync_ready;
-    // 
+    //
+    int echo;
     char *handler_buf;
 
     // last line read on "terminal"

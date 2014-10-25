@@ -68,7 +68,21 @@ int su_srv_exit_shell_session();
 
 /// Tells whether a shell session is currently bound to this process.
 ///
+/// Returns: A non-zero value if such a session exists.
+///
 int su_srv_shell_session_ping();
+
+/// Enable/disable session "terminal" output echo to log file.
+///
+void su_srv_set_tty_echo(int echo);
+
+/// Tells whether or not the current session "terminal" output is echoed to
+/// the log file.
+///
+/// Returns: a positive value if true, 0 if false, a negative value if there's
+///          no bound shell session.
+///
+int su_srv_get_tty_echo();
 
 #ifdef __cplusplus
 }

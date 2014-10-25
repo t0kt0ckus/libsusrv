@@ -190,9 +190,23 @@ char *su_srv_last_tty_read()
     return NULL;
 }
 
+void su_srv_set_tty_echo(int echo)
+{
+    if (_su_session)
+        _su_session->echo = (echo != 0) ? 1 : 0;
+}
+
+int su_srv_get_tty_echo()
+{
+    if (_su_session)
+        return _su_session->echo;
+    else
+        return -1;
+}
+
 int su_srv_shell_session_ping() 
 {
-    return (_su_session != NULL);
+    return (_su_session != NULL) ? 1 : 0;
 }
 
 void *session_handler_fn(void * targs)
@@ -229,8 +243,9 @@ void *session_handler_fn(void * targs)
             else
             {
                 // write to log
-                write(fd, _su_session->handler_buf,
-                        strlen(_su_session->handler_buf));
+                if (_su_session->echo)
+                    write(fd, _su_session->handler_buf,
+                          strlen(_su_session->handler_buf));
 
                 // update last read
                 char *tmp = _su_session->last_tty_read;
@@ -253,6 +268,7 @@ void *session_handler_fn(void * targs)
     }
     if (! exit_request)
     {
+        shell_stop_process(_su_session); 
         invalidate_current_session();
         su_srv_log_printf(
                 "Shell session invalidated, shell proces died !");

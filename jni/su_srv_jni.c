@@ -60,7 +60,22 @@ JNIEXPORT jint JNICALL Java_org_openmarl_susrv_LibSusrv_exitShellSession(JNIEnv 
 }
   
 JNIEXPORT jint JNICALL
-    Java_org_openmarl_susrv_LibSusrv_stat(JNIEnv *jEnv, jobject jInstance)
+    Java_org_openmarl_susrv_LibSusrv_ping(JNIEnv *jEnv, jobject jInstance)
 {
     return su_srv_shell_session_ping();
+}
+
+JNIEXPORT void JNICALL
+    Java_org_openmarl_susrv_LibSusrv_setTtyEcho(JNIEnv *jEnv, 
+            jobject jInstance,
+            jint jEcho)
+{
+    su_srv_set_tty_echo(jEcho);
+}
+
+JNIEXPORT jint JNICALL
+    Java_org_openmarl_susrv_LibSusrv_getTtyEcho(JNIEnv *jEnv, 
+            jobject jInstance)
+{
+    return su_srv_get_tty_echo();
 }

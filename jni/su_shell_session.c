@@ -44,6 +44,7 @@ su_shell_session *su_shell_session_new(const char * pfs_root, pid_t owner_pid)
         session->shell_pid = (pid_t) 0;
         session->handler_pth = malloc(sizeof(pthread_t));
         session->handler_buf = malloc(sizeof(char) * BUF_INITIAL_SIZE);
+        session->echo = 1;
         session->last_tty_read = NULL;
 
         if (init_af_un_address(session) || init_mutexes(session))

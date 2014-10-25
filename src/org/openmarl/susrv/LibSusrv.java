@@ -75,10 +75,25 @@ public class LibSusrv {
      *
      * <p>This API si specified by the C function <code>su_srv_ping()</code>.</p>
      *
-     * @return A non-<code>0</code> value when the requesting process is currently not bound to any
-     * shell session.
+     * @return A non-<code>0</code> value when the requesting process is currently bound to a
+     * valid shell session.
      */
     public static native int ping();
+
+    /**
+     * Enables/disables echo-ing the session "terminal" output to the log file.
+     *
+     * @param echo A non-zero value to enable echo.
+     */
+    public static native void setTtyEcho(int echo);
+
+    /**
+     * Tells whether echo is enabled on current session.
+     *
+     * @return <code>0</code> if echo is disabled, a positive value if enabled, and a negative
+     * value otherwise.
+     */
+    public static native int getTtyEcho();
 
     /**
      * Answers the last line read on the current session "terminal" output.
