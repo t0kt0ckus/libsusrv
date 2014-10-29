@@ -14,6 +14,7 @@
 extern "C" {
 #endif
 
+char *su_srv_log_path;    
 FILE *su_srv_log_fptr;
 
 // su_srv_log_init():

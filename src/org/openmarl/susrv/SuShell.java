@@ -431,8 +431,15 @@ public class SuShell {
      * @return <code>true</code> when such a session exists and echo is enabled.
      */
     public boolean getTtyEcho() {
-        return (LibSusrv.getTtyEcho() > 0);
+            return (LibSusrv.getTtyEcho() > 0);
     }
+
+    /**
+     * Answers the path to the shell's session log file.
+     *
+     * @return An absolute path, or <code>null</code> when not available.
+     */
+    public String getTtyPath() { return LibSusrv.getTtyPath(); }
 
     private void updatePrivateEnvironment() {
         // PATH

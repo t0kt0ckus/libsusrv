@@ -24,6 +24,10 @@ JNIEXPORT jstring JNICALL
     Java_org_openmarl_susrv_LibSusrv_getLastTtyRead(JNIEnv *jEnv,
             jobject jInstance);
 
+JNIEXPORT jstring JNICALL
+    Java_org_openmarl_susrv_LibSusrv_getTtyPath(JNIEnv *jEnv,
+            jobject jInstance);
+
 JNIEXPORT jint JNICALL
     Java_org_openmarl_susrv_LibSusrv_exitShellSession(JNIEnv *jEnv, jobject jInstance);
   

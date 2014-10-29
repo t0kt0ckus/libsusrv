@@ -52,11 +52,13 @@ typedef struct su_shell_session
     pthread_mutex_t *shell_sync_mutex;
     pthread_cond_t *shell_sync_ready;
     //
-    int echo;
     char *handler_buf;
 
-    // last line read on "terminal"
+    // last line read on shell's "terminal"
     char *last_tty_read;
+
+    // should we echo shell's stdout to log file
+    int tty_echo;
 
     // Last executed command exit code
     //

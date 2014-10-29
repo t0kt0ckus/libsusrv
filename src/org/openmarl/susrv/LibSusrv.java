@@ -103,6 +103,13 @@ public class LibSusrv {
     public static native String getLastTtyRead();
 
     /**
+     * Answers the path to the shell's session log file.
+     *
+     * @return An absolute path, or <code>null</code> when not available.
+     */
+    public static native String getTtyPath();
+
+    /**
      * Answers the PID of the first process which name matches a search term.
      *
      * <p>This API si specified by the C function <code>su_srv_getpid()</code>.</p>

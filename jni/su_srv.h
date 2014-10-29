@@ -70,7 +70,7 @@ int su_srv_exit_shell_session();
 ///
 /// Returns: A non-zero value if such a session exists.
 ///
-int su_srv_shell_session_ping();
+int su_srv_ping_shell_session();
 
 /// Enable/disable session "terminal" output echo to log file.
 ///
@@ -83,6 +83,12 @@ void su_srv_set_tty_echo(int echo);
 ///          no bound shell session.
 ///
 int su_srv_get_tty_echo();
+
+/// Answers the path to the "terminal" log file of current session.
+///
+/// Returns: the absolute path to the log file, or NULL when no such session.
+///
+char *su_srv_tty_path();
 
 #ifdef __cplusplus
 }

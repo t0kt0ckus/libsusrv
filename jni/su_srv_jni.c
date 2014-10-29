@@ -42,6 +42,18 @@ JNIEXPORT jstring JNICALL
     else 
         return (*jEnv)->NewStringUTF(jEnv, "");
 }
+
+JNIEXPORT jstring JNICALL
+    Java_org_openmarl_susrv_LibSusrv_getTtyPath(JNIEnv *jEnv,
+            jobject jInstance)
+{
+    char *line = su_srv_tty_path();
+    if (line)
+        return (*jEnv)->NewStringUTF(jEnv, line);
+    else 
+        return (*jEnv)->NewStringUTF(jEnv, "");
+}
+    
     
 JNIEXPORT jint JNICALL
     Java_org_openmarl_susrv_LibSusrv_getpid(JNIEnv *jEnv, jobject jInstance, 
@@ -62,7 +74,7 @@ JNIEXPORT jint JNICALL Java_org_openmarl_susrv_LibSusrv_exitShellSession(JNIEnv 
 JNIEXPORT jint JNICALL
     Java_org_openmarl_susrv_LibSusrv_ping(JNIEnv *jEnv, jobject jInstance)
 {
-    return su_srv_shell_session_ping();
+    return su_srv_ping_shell_session();
 }
 
 JNIEXPORT void JNICALL

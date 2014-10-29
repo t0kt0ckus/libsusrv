@@ -193,20 +193,28 @@ char *su_srv_last_tty_read()
 void su_srv_set_tty_echo(int echo)
 {
     if (_su_session)
-        _su_session->echo = (echo != 0) ? 1 : 0;
+        _su_session->tty_echo = (echo != 0) ? 1 : 0;
 }
 
 int su_srv_get_tty_echo()
 {
     if (_su_session)
-        return _su_session->echo;
+        return _su_session->tty_echo;
     else
         return -1;
 }
 
-int su_srv_shell_session_ping() 
+int su_srv_ping_shell_session() 
 {
     return (_su_session != NULL) ? 1 : 0;
+}
+
+char *su_srv_tty_path() 
+{
+    if (_su_session)
+        return su_srv_log_path;
+    else
+        return NULL;
 }
 
 void *session_handler_fn(void * targs)
@@ -243,7 +251,7 @@ void *session_handler_fn(void * targs)
             else
             {
                 // write to log
-                if (_su_session->echo)
+                if (_su_session->tty_echo)
                     write(fd, _su_session->handler_buf,
                           strlen(_su_session->handler_buf));
 

@@ -21,20 +21,24 @@ FILE *su_srv_log_fptr;
 static const char *SU_SRV_LOG_FMT = "%s/var/log/su-%05d.log";
 static const int SU_SRV_LOG_WLEN = 16 + 5;
 
+char *su_srv_log_path; 
+
 int su_srv_log_init(const char * pfs_root, int pid)
 {
     int last_err = -1;
     int logpath_len = strlen(pfs_root) + SU_SRV_LOG_WLEN + 1;
-    char *logpath;
     
-    if ((logpath = malloc(sizeof(char) * logpath_len)))
+    if ((su_srv_log_path = malloc(sizeof(char) * logpath_len)))
     {
-        snprintf(logpath, logpath_len, SU_SRV_LOG_FMT, pfs_root, pid);
-        if ((su_srv_log_fptr = fopen(logpath, "a")))
+        snprintf(su_srv_log_path,
+                logpath_len,
+                SU_SRV_LOG_FMT,
+                pfs_root,
+                pid);
+        if ((su_srv_log_fptr = fopen(su_srv_log_path, "a")))
             last_err = 0;
         else
             last_err = errno;
-        free(logpath);
     }
 
     return last_err;
@@ -42,6 +46,8 @@ int su_srv_log_init(const char * pfs_root, int pid)
 
 void su_srv_log_close()
 {
+    if (su_srv_log_path)
+        free(su_srv_log_path);
     if (su_srv_log_fptr) {
         fclose(su_srv_log_fptr);
         su_srv_log_fptr = NULL;
