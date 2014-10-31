@@ -270,6 +270,8 @@ public class SuShell {
         return LibSusrv.getpid(procname);
     }
 
+    public String[] getproclist() { return  LibSusrv.getproclist();}
+
     /**
      * Answers the last line red on the session terminal.
      *

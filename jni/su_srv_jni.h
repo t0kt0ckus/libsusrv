@@ -38,6 +38,9 @@ JNIEXPORT jint JNICALL
     Java_org_openmarl_susrv_LibSusrv_getpid(JNIEnv *jEnv, jobject jInstance, 
     jstring jProcname);
 
+JNIEXPORT jobjectArray JNICALL
+    Java_org_openmarl_susrv_LibSusrv_getproclist(JNIEnv *jEnv, jobject jInstance);
+
 JNIEXPORT void JNICALL
     Java_org_openmarl_susrv_LibSusrv_setTtyEcho(JNIEnv *jEnv, 
             jobject jInstance,

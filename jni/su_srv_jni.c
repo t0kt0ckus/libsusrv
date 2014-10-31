@@ -7,8 +7,10 @@
  * License: GPLv3
  *
  */
+#include <stdlib.h>
+
 #include "su_srv.h"
-#include "su_srv_getpid.h"
+#include "su_shell_tools.h"
 #include "su_srv_jni.h"
 
 JNIEXPORT jint JNICALL
@@ -54,6 +56,32 @@ JNIEXPORT jstring JNICALL
         return (*jEnv)->NewStringUTF(jEnv, "");
 }
     
+JNIEXPORT jobjectArray JNICALL
+    Java_org_openmarl_susrv_LibSusrv_getproclist(JNIEnv *jEnv, 
+            jobject jInstance)
+{
+    jobjectArray proc_array;
+    proc_def_t *proc_table;
+
+    int nproc = su_srv_getproclist(&proc_table);
+    proc_array = (jobjectArray) (*jEnv)->NewObjectArray(jEnv,
+            nproc,
+            (*jEnv)->FindClass(jEnv, "java/lang/String"),
+            (*jEnv)->NewStringUTF(jEnv, ""));
+
+    int k;
+    for (k=0; k<nproc; k++)
+        (*jEnv)->SetObjectArrayElement(jEnv,
+                proc_array,
+                k,
+                (*jEnv)->NewStringUTF(jEnv, proc_table[k].comm));
+
+    for (k=0; k<nproc; k++)
+        free(proc_table[k].comm);
+    free(proc_table);
+
+    return proc_array;
+}
     
 JNIEXPORT jint JNICALL
     Java_org_openmarl_susrv_LibSusrv_getpid(JNIEnv *jEnv, jobject jInstance, 

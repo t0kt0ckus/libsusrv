@@ -134,6 +134,12 @@ public class LibSusrv {
      */
     public static native int exitShellSession();
 
+    /**
+     *
+     * @return
+     */
+    public static native String[] getproclist();
+
     static {
         System.loadLibrary("susrv");
     }
