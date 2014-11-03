@@ -46,6 +46,7 @@ javac -d $TMP_DIR -classpath $ANDROID_JAR $M_JAVA_DIR/*/*/susrv/*.java
 
 # libsusrv.jar
 #
+rm -f ${M_JAR}
 cd $TMP_DIR
 zip -R ${M_JAR} lib/*/*.so */*/*/*.class
 cd $M_ROOT_DIR
