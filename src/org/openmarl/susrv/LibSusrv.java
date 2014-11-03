@@ -1,5 +1,5 @@
 /*
-    SuSrv: Android SU native client library
+    SuSrv: A simple native Android SU client library.
 
     <t0kt0ckus@gmail.com>
     (C) 2014
@@ -122,6 +122,15 @@ public class LibSusrv {
     public static native int getpid(String procname);
 
     /**
+     * Answers the list of currently running processes.
+     *
+     * <p>This API si specified by the C function <code>su_srv_getproclist()</code>.</p>
+     *
+     * @return The list of process names as defined by <code>/proc/pid/cmdline</code>.
+     */
+    public static native String[] getproclist();
+
+    /**
      * Exits the shell session currently bound to the requiring process.
      *
      * <p>This releases all associated native resources (process, thread, socket, ...).
@@ -134,11 +143,6 @@ public class LibSusrv {
      */
     public static native int exitShellSession();
 
-    /**
-     *
-     * @return
-     */
-    public static native String[] getproclist();
 
     static {
         System.loadLibrary("susrv");
@@ -146,4 +150,3 @@ public class LibSusrv {
 
     private LibSusrv() {}
 }
-

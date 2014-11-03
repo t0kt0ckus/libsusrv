@@ -1,5 +1,5 @@
 /*
-    SuSrv: Android SU native client library
+    SuSrv: A simple native Android SU client library.
 
     <t0kt0ckus@gmail.com>
     (C) 2014
@@ -11,51 +11,33 @@ package org.openmarl.susrv;
 import android.content.Context;
 import android.os.AsyncTask;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * SU shell session asynchronous initializer.
+ * SU Shell session asynchronous initializer.
  *
  * @author t0kt0ckus
  */
 public class SuShellAsyncInit extends AsyncTask<Void,Void,SuShell> {
 
-    private List<SuShellAsyncObserver> mObservers = new ArrayList<SuShellAsyncObserver>();
     private Context mContext;
 
     /**
+     * Creates a new initializer.
      *
-     * @param ctx
+     * <p>Actual initialization will be triggered through {@link #execute(Object[])}.
+     * </p>
+     *
+     * @param ctx A valid context, that should implement
+     *            {@link org.openmarl.susrv.SuShellLifecycleObserver}.
      */
     public SuShellAsyncInit(Context ctx) {
         mContext = ctx;
     }
 
-    /**
-     *
-     * @param observer
-     *
-     * @return This.
-     */
-    public SuShellAsyncInit addObserver(SuShellAsyncObserver observer) {
-        mObservers.add(observer);
-        return this;
-    }
-
-    /**
-     *
-     * @param observer
-     */
-    public void removeObserver(SuShellAsyncObserver observer) {
-        mObservers.remove(observer);
-    }
-
     @Override
-    protected void onPostExecute(SuShell suShell) {
-        super.onPostExecute(suShell);
-        for (SuShellAsyncObserver observer : mObservers)
-            observer.onShellInitComplete(suShell);
+    protected void onPostExecute(SuShell shell) {
+        super.onPostExecute(shell);
+        if (mContext instanceof SuShellLifecycleObserver)
+            ((SuShellLifecycleObserver) mContext).onSuShellInitialized(shell);
     }
 
     @Override

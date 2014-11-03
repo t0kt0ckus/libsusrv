@@ -28,4 +28,9 @@ public class SuShellInvalidatedException extends Exception {
     public SuShellInvalidatedException(Throwable throwable) {
         super(throwable);
     }
+
+    @Override
+    public String toString() {
+        return "The SU Shell session associated to this process has been invalidated";
+    }
 }

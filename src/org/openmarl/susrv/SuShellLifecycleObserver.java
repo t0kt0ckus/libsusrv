@@ -1,5 +1,5 @@
 /*
-    SuSrv: Android SU native client library
+    SuSrv: A simple native Android SU client library.
 
     <t0kt0ckus@gmail.com>
     (C) 2014
@@ -9,17 +9,21 @@
 package org.openmarl.susrv;
 
 /**
- * Observer interface for {@link org.openmarl.susrv.SuShellAsyncInit}.
+ * Interface for observers interested in SU Shell session life-cycle.
  *
  * @author t0kt0ckus
  */
-public interface SuShellAsyncObserver {
+public interface SuShellLifecycleObserver {
 
     /**
      * Notifies the observer about whether a shell session's initialization has succeeded.
      *
      * @param shell An initialized SU Shell session, or <code>null</code> on failure.
      */
-    public void onShellInitComplete(SuShell shell);
+    public void onSuShellInitialized(SuShell shell);
 
+    /**
+     * Notifies the observer that
+     */
+    public void onSuShellInvalidated();
 }

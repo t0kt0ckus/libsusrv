@@ -1,5 +1,5 @@
 /*
-    SuSrv: Android SU native client library
+    SuSrv: A simple native Android SU client library.
 
     <t0kt0ckus@gmail.com>
     (C) 2014
@@ -18,15 +18,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Represents a SU Shell session oriented API, implemented around the native
+ * Represents a SU Shell session oriented API, implemented above the native
  * {@link org.openmarl.susrv.LibSusrv} library.
  *
- * <p>A shell session is initialized after a successful call to
- * {@link #getInstance(android.content.Context, boolean) getInstance()} ,
- * and until it's invalidated through a call to {@link #exit()}, or the associated native shell
- * process dies abnormally.
+ * <p>A shell session is bound to an application process after a successful initialization
+ * ({@link #getInstance(android.content.Context, boolean) getInstance()}),
+ * and it remains associated to this process until invalidated through a call to
+ * {@link #exit()}, or the associated native shell process dies abnormally.
  * </p>
  *
  * <p>API calls that require a valid native shell session to be bound throw
@@ -34,7 +36,7 @@ import java.lang.reflect.Field;
  * session exists for the requesting process.
  * </p>
  *
- * <p>The shell session also initializes a <i>private file system</i> (PFS), creating the
+ * <p>The shell session initializes a <i>private file system</i> (PFS), creating the
  * following directories, all with permissions <code>0700</code>: <code>pfs_root/var</code>,
  * <code>pfs_root/var/run</code>, <code>pfs_root/var/log</code>, <code>pfs_root/bin</code>,
  * <code>pfs_root/lib</code>, and <code>pfs_root/tmp</code>, where <code>pfs_root</code> is the
@@ -44,9 +46,11 @@ import java.lang.reflect.Field;
  *
  * <p>When a session is initialized with the <code>smart</code> flag, it sets the environment
  * to include <code>pfs_root/bin</code> in <code>PATH</code>, and <code>pfs_root/lib</code>
- * in <code>LD_LIBRARY_PATH</code>, and immediately changes its working directory to PFS root.</p>
+ * in <code>LD_LIBRARY_PATH</code>, and immediately changes its working directory to
+ * <code>pfs_root</code>.
+ * </p>
  *
- * <p>The shell log file, containing command output and debug info, is available in the directory
+ * <p>The shell log file, containing commands output and debug info, is available in the directory
  * <code>pfs_root/var/log</code>.
  * </p>
  *
@@ -54,12 +58,18 @@ import java.lang.reflect.Field;
  */
 public class SuShell {
 
+
+    private static SuShell _instance;
+
     private final String mPfsRoot;
     private final Context mContext;
+
+    private final List<SuShellLifecycleObserver> mObservers;
 
     private SuShell(Context ctx) {
         mContext = ctx;
         mPfsRoot = mContext.getFilesDir().getPath();
+        mObservers = new ArrayList<SuShellLifecycleObserver>();
     }
 
     /**
@@ -69,43 +79,74 @@ public class SuShell {
      * @param smartFlag If true, the shell environment is updated to include this session's PFS.
      *
      * @return An initialized SU shell session ready to accept commands, or <code>null</code> when
-     * a suitable session didn't exist, and an initialization error occurred.
+     * a suitable session didn't exist, and a new one could not be created.
      */
     public static SuShell getInstance(Context ctx, boolean smartFlag) {
-        if (suShellInstance == null) {
-            suShellInstance = new SuShell(ctx);
+        if (_instance == null) {
+            _instance = new SuShell(ctx);
 
-            int rval = LibSusrv.openShellSession(suShellInstance.mPfsRoot);
+            int rval = LibSusrv.openShellSession(_instance.mPfsRoot);
             if (rval == 0) {
                 Log.d(TAG, "Created new SU Shell native session");
 
                 if (smartFlag)
-                    suShellInstance.updatePrivateEnvironment();
+                    _instance.updatePrivateEnvironment();
             }
             else if (rval == LibSusrv.SESSION_EXISTS_ERR) {
                 Log.d(TAG, "Re-using existing SU Shell native session");
             }
             else {
-                suShellInstance = null;
+                _instance = null;
                 Log.e(TAG, "Failed to bind to any native SU Shell session");
             }
         }
 
-        return suShellInstance;
+        return _instance;
     }
 
     /**
      * Answers the current SU shell session, if any.
      *
-     * @return A valid shell session, or <code>null</code> if the requesting process is currently
-     * not bound to any session.
+     * @return A valid shell session, or <code>null</code> if the requesting process isn't currently
+     * bound to any shell session.
      */
     public static SuShell getInstance() {
-        return suShellInstance;
+        return _instance;
     }
 
     /**
-     * Answers the path to the application PFS root.
+     * Adds a life-cycle observer.
+     *
+     * The registered observer will be notified when this shell session becomes invalid. Note that
+     * observers are notified only once upon session invalidation.
+     *
+     * @param observer The observer.
+     *
+     * @return The current count of observers.
+     */
+    public int addObserver(SuShellLifecycleObserver observer) {
+        mObservers.add(observer);
+        return mObservers.size();
+    }
+
+    /**
+     * Removes a life-cycle observer.
+     *
+     * @param observer The no more interested observer.
+     *
+     * @return The current count of observers.
+     */
+    public int removeObserver(SuShellLifecycleObserver observer) {
+        mObservers.remove(observer);
+        return mObservers.size();
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    //                              State API
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Answers the path to the application PFS's root.
      *
      * @return Something like <code>/data/data/com.example.app/files</code>.
      */
@@ -114,7 +155,9 @@ public class SuShell {
     }
 
     /**
-     * Answers the PFS temporary directory.
+     * Answers the PFS's temp directory.
+     *
+     * <p>This directory is cleared upon application restart.
      *
      * @return Its absolute path.
      */
@@ -123,16 +166,68 @@ public class SuShell {
     }
 
     /**
+     * Tells whether a valid shell session is currently bound to the requesting process.
+     *
+     * @return <code>true</code> if this is the case.
+     */
+    public boolean ping() {
+        return (LibSusrv.ping() > 0);
+    }
+
+    /**
+     * Answers the path to the shell's session log file.
+     *
+     * @return Its absolute path, or <code>null</code> when not available.
+     */
+    public String getTtyPath() { return LibSusrv.getTtyPath(); }
+
+    /**
+     * Enables/disables echo-ing "terminal" output to session log file.
+     *
+     * @param enabled <code>true</code> to echo commands output to the session's log file,
+     *                <code>false</code> for a silent session.
+     */
+    public void setTtyEcho(boolean enabled) {
+        LibSusrv.setTtyEcho(enabled ? 1 : 0);
+    }
+
+    /**
+     * Tells whether "terminal" echo is enabled on the current shell session.
+     *
+     * @return <code>true</code> when such a session exists and echo is enabled.
+     */
+    public boolean getTtyEcho() {
+        return (LibSusrv.getTtyEcho() > 0);
+    }
+
+    /**
+     * Answers the last line red on the session terminal.
+     *
+     * @return The last available line, or <code>null</code> if not available.
+     */
+    public String getLastTtyLine() {
+        String lastLine = LibSusrv.getLastTtyRead();
+        if ( (lastLine != null) && lastLine.endsWith("\n"))
+            return lastLine.substring(0, lastLine.length() -1);
+        else
+            return lastLine;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    //                              Java unpriviledged API
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
      * Imports an asset into the application private storage.
      *
-     * <p>This does not require any privilege, and is not accomplished through the native
-     * SU shell session.</p>
+     * <p>This neither requires any privilege, nor is implemented as a native call.
+     * </p>
      *
      * @param rawAsset The asset name, that is its file name within the application <code>raw</code>
      *                 resources folder.
-     * @param dirPath The destination directory path relative to PFS root.
+     * @param dirPath The destination directory path relative to PFS's root.
      * @param filename The destination filename.
-     * @param isExec If true the destination file will be executable.
+     * @param isExec When <code>true</code>, the destination file will be executable.
      *
      * @return The imported asset size in bytes on success,
      * <code>0</code> when the asset name is undefined, or a negative value on error.
@@ -170,13 +265,13 @@ public class SuShell {
         }
         catch(IOException e ) {
             iBytes = -1;
-            Log.i(TAG, String.format("PFS-import asset <%s> failed: %s",
+            Log.e(TAG, String.format("PFS-import asset <%s> failed: %s",
                     rawAsset, e.toString()));
         }
         catch (Resources.NotFoundException e) {
             iBytes = -1;
-            Log.i(TAG, String.format("PFS-import asset <%s> failed: %s",
-                    rawAsset, e.toString()));
+            Log.w(TAG, String.format("PFS-import asset <%s> failed: %s",
+                    rawAsset, e.toString())); // should not happen
         }
 
         return ( iBytes > 0) ? iBytes + 1 : -1;
@@ -184,6 +279,9 @@ public class SuShell {
 
     /**
      * Imports an asset as an executable into <code>pfs_root/bin</code>.
+     *
+     * <p>This neither requires any privilege, nor is implemented as a native call.
+     * </p>
      *
      * @param rawAsset The asset name, that is its file name within the application <code>raw</code>
      *                 resources folder.
@@ -199,6 +297,9 @@ public class SuShell {
     /**
      * Imports an asset as a shared library into <code>pfs_root/lib</code>.
      *
+     * <p>This neither requires any privilege, nor is implemented as a native call.
+     * </p>
+     *
      * @param rawAsset The asset name, that is its file name within the application <code>raw</code>
      *                 resources folder.
      * @param filename The destination file name.
@@ -213,6 +314,9 @@ public class SuShell {
     /**
      * Imports an asset as a temporary file in <code>pfs_root/tmp</code>.
      *
+     * <p>This does not require any privilege, and is not accomplished through the native
+     * SU shell session.</p>
+     *
      * @param rawAsset The asset name, that is its file name within the application <code>raw</code>
      *                 resources folder.
      * @param filename The destination file name.
@@ -221,7 +325,53 @@ public class SuShell {
      * <code>0</code> when the asset name is undefined, or a negative value on error.
      */
     public int importTmp(String rawAsset, String filename) {
-        return importAsset(rawAsset, "lib", filename, false);
+        return importAsset(rawAsset, "tmp", filename, false);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    //                              Native unpriviledged API
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Answers the PID of the first process which name matches a given application name.
+     *
+     * <p>This is an unprivileged native call, reading Linux <code>proc</code> filesystem.
+     * </p>
+     *
+     * @param procname The process entry to search for, for example <code>com.example.app</code>.
+     *
+     * @return A non-zero PID, or a negative number on error.
+     */
+    public int getpid(String procname) {
+        return LibSusrv.getpid(procname);
+    }
+
+    /**
+     * Answers the list of current process names.
+     *
+     * <p>This is an unprivileged native call, reading Linux <code>/proc</code> filesystem.
+     * </p>
+     *
+     * @return The list of process names, as defined by <code>/proc/pid/cmdline</code>.
+     */
+    public String[] getproclist() {
+        return  LibSusrv.getproclist();
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    //                              Native unpriviledged API
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Invalidates the current shell session, releasing native resources.
+     *
+     * @return <code>0</code> when the current session has been properly closed,
+     * {@link org.openmarl.susrv.LibSusrv#NO_SESSION_ERR}, or an error code when
+     * during native shell shutdown failed.
+     */
+    public int exit() {
+        _instance = null;
+        return LibSusrv.exitShellSession();
     }
 
     /**
@@ -232,72 +382,37 @@ public class SuShell {
      * @return The command exit code, usually zero (<code>0</code>) on success, or
      * {@link org.openmarl.susrv.LibSusrv#INVALID_RESULT_ERR INVALID_RESULT_ERR}.
      *
-     * @throws SuShellInvalidatedException
+     * @throws SuShellInvalidatedException When this session has been invalidated.
      */
-    public int exec(String command) throws SuShellInvalidatedException {
+    public int exec(String command) throws SuShellInvalidatedException
+    {
         int rval = LibSusrv.exec(command);
 
-        if (rval != LibSusrv.NO_SESSION_ERR)
-            return rval;
-        else {
-            suShellInstance = null;
-            throw new SuShellInvalidatedException();
-        }
-    }
+        if (rval == LibSusrv.NO_SESSION_ERR)
+            invalidatedSessionError();
 
-    /**
-     * Invalidates the current shell session, releasing native resources.
-     *
-     * @return <code>0</code> when the current session has been properly closed,
-     * {@link org.openmarl.susrv.LibSusrv#NO_SESSION_ERR}, or an error code when
-     * during native shell shutdown failed.
-     */
-    public int exit() {
-        suShellInstance = null;
-        return LibSusrv.exitShellSession();
-    }
-
-    /**
-     * Answers the PID of the first process which name matches a given application name.
-     *
-     * <p>Though implemented natively, this call does not require any privilege</p>
-     *
-     * @param procname The process entry to search for, for example <code>com.example.app</code>.
-     *
-     * @return A non-zero PID, or a negative number on error.
-     */
-    public int getpid(String procname) {
-        return LibSusrv.getpid(procname);
-    }
-
-    public String[] getproclist() { return  LibSusrv.getproclist();}
-
-    /**
-     * Answers the last line red on the session terminal.
-     *
-     * @return The last available line, or <code>null</code>.
-     */
-    public String getLastTtyLine() {
-        String lastLine = LibSusrv.getLastTtyRead();
-        if ( (lastLine != null) && lastLine.endsWith("\n"))
-            return lastLine.substring(0, lastLine.length() -1);
-        else
-            return lastLine;
+        return rval;
     }
 
     /**
      * Within the current SU shell session, changes a file or directory permissions.
      *
-     * @param path The file path.
+     * @param path The file or directory path.
      * @param mode The UNIX permission mask (usually as in octal).
      *
-     * @return The command exit code.
+     * @return The command exit code, typically <code>0</code> on success.
      *
-     * @throws SuShellInvalidatedException
+     * @throws SuShellInvalidatedException When this session has been invalidated.
      */
     public int chmod(String path, int mode) throws SuShellInvalidatedException {
         String cmd = String.format("chmod %o %s", mode, path);
-        return exec(cmd);
+
+        int rval = LibSusrv.exec(cmd);
+
+        if (rval == LibSusrv.NO_SESSION_ERR)
+            invalidatedSessionError();
+
+        return rval;
     }
 
     /**
@@ -306,23 +421,22 @@ public class SuShell {
      * @param path The directory path.
      * @param mode The UNIX permission mask (usually as in octal).
      *
-     * @return The command exit code.
+     * @return The command exit code, typically <code>0</code> on success.
      *
-     * @throws SuShellInvalidatedException
+     * @throws SuShellInvalidatedException When this session has been invalidated.
      */
     public int mkdir(String path, int mode) throws SuShellInvalidatedException
     {
         String cmd = String.format("mkdir -p %s", path);
         int rval = exec(cmd) ;
 
-        if (rval != LibSusrv.NO_SESSION_ERR) {
-            if ((rval == 0) && (mode > 0))
-                rval = chmod(path, mode);
-        }
-        else {
-            suShellInstance = null;
-            throw new SuShellInvalidatedException();
-        }
+        if (rval == LibSusrv.NO_SESSION_ERR)
+            invalidatedSessionError();
+
+        if ( ((rval == 0) || (rval == ERRNO_EEXIST))
+                && (mode > 0))
+            rval = chmod(path, mode);
+
         return rval;
     }
 
@@ -333,9 +447,9 @@ public class SuShell {
      * @param destinationPath The destination path.
      * @param mode The UNIX permission mask (usually as in octal).
      *
-     * @return The command exit code.
+     * @return The command exit code, typically <code>0</code> on success.
      *
-     * @throws SuShellInvalidatedException
+     * @throws SuShellInvalidatedException When this session has been invalidated.
      */
     public int cp(String sourcePath, String destinationPath, int mode)
             throws SuShellInvalidatedException
@@ -343,14 +457,12 @@ public class SuShell {
         String cmd = String.format("cp %s %s", sourcePath, destinationPath);
         int rval = exec(cmd) ;
 
-        if (rval != LibSusrv.NO_SESSION_ERR) {
-            if ((rval == 0) && (mode > 0))
-                rval = chmod(destinationPath, mode);
-        }
-        else {
-            suShellInstance = null;
-            throw new SuShellInvalidatedException();
-        }
+        if (rval == LibSusrv.NO_SESSION_ERR)
+            invalidatedSessionError();
+
+        if ((rval == 0) && (mode > 0))
+            rval = chmod(destinationPath, mode);
+
         return rval;
     }
 
@@ -359,9 +471,9 @@ public class SuShell {
      *
      * @param cwdPath The new working directory.
      *
-     * @return The command exit code.
+     * @return The command exit code, typically <code>0</code> on success.
      *
-     * @throws SuShellInvalidatedException
+     * @throws SuShellInvalidatedException When this session has been invalidated.
      */
     public int cd(String cwdPath)
             throws SuShellInvalidatedException
@@ -369,13 +481,10 @@ public class SuShell {
         String cmd = String.format("cd %s", cwdPath);
         int rval = exec(cmd) ;
 
-        if (rval != LibSusrv.NO_SESSION_ERR) {
-            return rval;
-        }
-        else {
-            suShellInstance = null;
-            throw new SuShellInvalidatedException();
-        }
+        if (rval == LibSusrv.NO_SESSION_ERR)
+            invalidatedSessionError();
+
+        return rval;
     }
 
     /**
@@ -390,58 +499,40 @@ public class SuShell {
      * @param destinationPath The destination file path.
      * @param mode The UNIX permission mask (usually as in octal).
      *
-     * @return The command exit code.
+     * @return The command exit code. (see {@link #cp(String, String, int)}).
      *
-     * @throws SuShellInvalidatedException
+     * @throws SuShellInvalidatedException When this session has been invalidated.
      */
     public int cpa(String rawAsset, String destinationPath, int mode)
             throws SuShellInvalidatedException
     {
 
         String tmpFileName = String.format("%s.tmp", rawAsset);
-        int sz_tmp = importTmp(rawAsset, tmpFileName);
-        if (sz_tmp > 0)
+        int retval = importTmp(rawAsset, tmpFileName);
+
+        if (retval > 0)
         {
             String tmpFilePath = String.format("%s/%s", getTmp(), tmpFileName);
-            return cp(tmpFilePath, destinationPath, mode);
+            retval = cp(tmpFilePath, destinationPath, mode);
         }
-        else
-            return -1;
+
+        return retval;
     }
 
-    /**
-     * Tells whether a valid shell session is currently bound to the requesting process.
-     *
-     * @return <code>true</code> if this is the case.
-     */
-    public boolean ping() {
-        return (LibSusrv.ping() > 0);
-    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    //                              impl.
+    ////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /**
-     * Enables/disables echo-ing "terminal" output to session log file.
-     *
-     * @param enabled
-     */
-    public void setTtyEcho(boolean enabled) {
-        LibSusrv.setTtyEcho(enabled ? 1 : 0);
-    }
+    private static final int ERRNO_EEXIST = 17;
 
-    /**
-     * Tells whether "terminal" echo is enabled on the current shell session.
-     *
-     * @return <code>true</code> when such a session exists and echo is enabled.
-     */
-    public boolean getTtyEcho() {
-            return (LibSusrv.getTtyEcho() > 0);
+    private void invalidatedSessionError() throws SuShellInvalidatedException {
+        for (SuShellLifecycleObserver observer : mObservers) {
+            observer.onSuShellInvalidated();
+        }
+        _instance = null;
+        mObservers.clear();
+        throw new SuShellInvalidatedException();
     }
-
-    /**
-     * Answers the path to the shell's session log file.
-     *
-     * @return An absolute path, or <code>null</code> when not available.
-     */
-    public String getTtyPath() { return LibSusrv.getTtyPath(); }
 
     private void updatePrivateEnvironment() {
         // PATH
@@ -495,12 +586,11 @@ public class SuShell {
             Log.w(TAG, e.toString()); // should not happen
         }
         catch (NoSuchFieldException e) {
-            Log.w(TAG, String.format("Unknown asset: %s", rawAsset));
+            Log.e(TAG, String.format("Unknown asset: %s", rawAsset));
         }
 
         return assetId;
     }
 
-    private static SuShell suShellInstance;
     private static final String TAG = SuShell.class.getSimpleName();
 }
