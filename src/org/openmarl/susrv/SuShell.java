@@ -171,7 +171,15 @@ public class SuShell {
      * @return <code>true</code> if this is the case.
      */
     public boolean ping() {
-        return (LibSusrv.ping() > 0);
+        boolean alive = (LibSusrv.ping() > 0);
+        if (! alive)
+        {
+            try {
+                invalidatedSessionError();
+            }
+            catch(SuShellInvalidatedException e) {}
+        }
+        return alive;
     }
 
     /**
