@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="description" content="Libsusrv : A simple native Android SU client library.">
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Libsusrv</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/t0kt0ckus/libsusrv">View on GitHub</a>
+
+          <h1 id="project_title">Libsusrv</h1>
+          <h2 id="project_tagline">A simple native Android SU client library.</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/t0kt0ckus/libsusrv/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/t0kt0ckus/libsusrv/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h1>
+<a id="libsusrv" class="anchor" href="#libsusrv" aria-hidden="true"><span class="octicon octicon-link"></span></a>libsusrv</h1>
+
+<p>A simple native Android SU client library.</p>
+
+<p>This library provides priviledged shell sessions on any Android system where a suitable SU application is installed.</p>
+
+<p>This library:</p>
+
+<ul>
+<li>forks a single SU Shell child process per Android application, with which it then communicates through a local UNIX socket </li>
+<li>permits to execute Shell <em>command strings</em>, where a <em>command string</em> may be a <em>Simple Command</em>, a <em>Pipeline</em>, a <em>List</em> or a <em>Compound Command</em>, as specified by the relevant man page</li>
+<li>permits access to the exit code returned by the command string </li>
+<li>permits access to what would be the output produced on a controlling terminal</li>
+<li>executes the command strings in the order they are submitted</li>
+<li>is accessible from both native C and Java code</li>
+</ul>
+
+<p><strong>Note:</strong> This primarily comprises a native shared library (<code>libsusrv.so</code>) for any considered architecture, and the definition of a Java object (<code>org.openmarl.susrv.LibSusrv</code>) that publishes the JNI-exported API. These components are standard POSIX/JNI stuff and may be used in a non Android context.</p>
+
+<p><strong>Disclaimer:</strong> Great documentation and examples, targeted to developers that need to integrate priviledged commands execution from an Android application, are maintained by Chainfire at <a href="https://github.com/Chainfire/libsuperuser">libsuperuser</a>. The <code>libsuperuser</code> library available there may offer more features and be more flexible than this one. I've written this simple trick because I feel it better suits my present requirements, and I share this code here. I also admit that the choice of a native library may not provide any sensible performance benefit in most situations, this wasn't a motivation here.</p>
+
+<p><strong>License</strong></p>
+
+<pre><code>t0kt0ckus@gmail.com
+(C) 2014
+
+This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+</code></pre>
+
+<h1>
+<a id="requirements" class="anchor" href="#requirements" aria-hidden="true"><span class="octicon octicon-link"></span></a>Requirements</h1>
+
+<p>Requirements are obvious:</p>
+
+<ul>
+<li>A rooted Android device, with an installed SU application, that is an application that provides a <code>su</code> binary that can spawn priviledged shell sessions. The library will search into the following directories: <code>/sbin</code>, <code>/system/sbin</code>, <code>/system/bin</code>, and <code>/system/xbin</code>, in that order.</li>
+<li>The native implementation relies upon POSIX C APIs, implemented in bionic, and should apply to most of Android OS versions.</li>
+</ul>
+
+<p>The library seems to work fine with Chainfire's <a href="http://www.chainfire.eu/projects/52/SuperSU/">SuperSU</a> on Android KitKat 4.x.  </p>
+
+<h1>
+<a id="overview" class="anchor" href="#overview" aria-hidden="true"><span class="octicon octicon-link"></span></a>Overview</h1>
+
+<p>According to Chainfire's <a href="http://su.chainfire.eu/">How-To SU</a>, in order to support most of the wildely adopted SU applications, and to avoid spawning an ephemeral <code>su</code> process upon each command string execution, we may choose to fork a single shell, to which we'll write command strings, and from which we'll read back what would be the output produced on a controlling terminal.</p>
+
+<p>This is implemented through native POSIX primitives, and as such, a Shell session comprises:</p>
+
+<ul>
+<li>a running <code>su</code> child process</li>
+<li>a local UNIX socket to communicate with</li>
+<li>a thread that consumes and interpret the socket I/O</li>
+<li>mutexes to synchronize things</li>
+</ul>
+
+<p>And the API is very simple:</p>
+
+<ul>
+<li>an <code>init()</code> call, that initializes a session as described above</li>
+<li>an <code>exec()</code> call, that permits to execute command strings, blocking untill the command exit code is available</li>
+<li>an <code>exit()</code> call, that terminates the shell process and releases the session resources</li>
+</ul>
+
+<p>Though the library's implementation allows client code to use threads to <em>queue</em> command strings, preserving order of submit, keep in mind that there's a unique shell child process per Android application to execute these commands.</p>
+
+<p>(Technicaly, one child SU shell may exist per process that loads the <code>libsusrv.so</code> shared library.)</p>
+
+<p>A SU shell session opens two files:</p>
+
+<ul>
+<li>
+<code>&lt;app-dir&gt;/var/log/su_session-&lt;pid&gt;.log</code>: contains some debug information and what would be the output produced on a controlling terminal</li>
+<li>
+<code>&lt;app-dir&gt;/var/run/su_session-&lt;pid&gt;</code>: which is the UNIX address <code>sun_path</code> of the rendez-vous socket, that will be unlinked as soon as the client peer connection to the shell process is established or denied, so it should be ephemeral</li>
+</ul>
+
+<p>where <code>&lt;app-dir&gt;</code> is the root of the embedding application private filesystem as answered by <code>android.content.Context.getFilesDir().getPath()</code>, usually <code>/data/data/&lt;application-package&gt;/files</code>.</p>
+
+<h1>
+<a id="build" class="anchor" href="#build" aria-hidden="true"><span class="octicon octicon-link"></span></a>Build</h1>
+
+<p>Obvisouly, both Android SDK and NDK must be installed, and the <code>ANDROID_SDK</code> and <code>ANDROID_NDK</code> environment variables propertly set.</p>
+
+<p>To build a library archive for all architectures:</p>
+
+<pre><code>$ git clone https://github.com/t0kt0ckus/libsusrv.git
+$ cd libsusrv
+$ ./make.sh 
+[armeabi-v7a] Compile thumb  : susrv &lt;= su_srv.c
+[armeabi-v7a] Compile thumb  : susrv &lt;= su_srv_jni.c
+[armeabi-v7a] Compile thumb  : susrv &lt;= su_srv_log.c
+[armeabi-v7a] Compile thumb  : susrv &lt;= su_srv_pfs.c
+[armeabi-v7a] Compile thumb  : susrv &lt;= su_shell_session.c
+[armeabi-v7a] SharedLibrary  : libsusrv.so
+[armeabi-v7a] Install        : libsusrv.so =&gt; libs/armeabi-v7a/libsusrv.so
+[armeabi] Compile thumb  : susrv &lt;= su_srv.c
+[armeabi] Compile thumb  : susrv &lt;= su_srv_jni.c
+[armeabi] Compile thumb  : susrv &lt;= su_srv_log.c
+[armeabi] Compile thumb  : susrv &lt;= su_srv_pfs.c
+[armeabi] Compile thumb  : susrv &lt;= su_shell_session.c
+[armeabi] SharedLibrary  : libsusrv.so
+[armeabi] Install        : libsusrv.so =&gt; libs/armeabi/libsusrv.so
+[x86] Compile        : susrv &lt;= su_srv.c
+[x86] Compile        : susrv &lt;= su_srv_jni.c
+[x86] Compile        : susrv &lt;= su_srv_log.c
+[x86] Compile        : susrv &lt;= su_srv_pfs.c
+[x86] Compile        : susrv &lt;= su_shell_session.c
+[x86] SharedLibrary  : libsusrv.so
+[x86] Install        : libsusrv.so =&gt; libs/x86/libsusrv.so
+[mips] Compile        : susrv &lt;= su_srv.c
+[mips] Compile        : susrv &lt;= su_srv_jni.c
+[mips] Compile        : susrv &lt;= su_srv_log.c
+[mips] Compile        : susrv &lt;= su_srv_pfs.c
+[mips] Compile        : susrv &lt;= su_shell_session.c
+[mips] SharedLibrary  : libsusrv.so
+[mips] Install        : libsusrv.so =&gt; libs/mips/libsusrv.so
+  adding: org/openmarl/susrv/SuShell.class (deflated 47%)
+  adding: org/openmarl/susrv/LibSusrv.class (deflated 37%)
+  adding: org/openmarl/susrv/SuShellAsyncInit.class (deflated 49%)
+  adding: org/openmarl/susrv/SuShellAsyncObserver.class (deflated 25%)
+  adding: org/openmarl/susrv/SuSrvException.class (deflated 43%)
+  adding: lib/armeabi/libsusrv.so (deflated 58%)
+  adding: lib/armeabi-v7a/libsusrv.so (deflated 58%)
+  adding: lib/mips/libsusrv.so (deflated 91%)
+  adding: lib/x86/libsusrv.so (deflated 63%)
+Multi-arch library archive: /marl/git/t0kt0ckus/libsusrv/dist/libsusrv.jar  
+</code></pre>
+
+<p>The produced  <code>dist/libsusrv.jar</code> contains:</p>
+
+<pre><code>// The native shared libraries
+//
++ lib/armeabi/libsusrv.so
++ lib/armeabi-v7a/libsusrv.so
++ lib/mips/libsusrv.so
++ lib/x86/libsusrv.so
+
+// The JNI object that publishes the native API
+//
++ org/openmarl/susrv/LibSusrv.class
+
+// Some Android specific more friendly API
+//
++ org/openmarl/susrv/SuShell.class
++ org/openmarl/susrv/SuShellAsyncInit.class
++ org/openmarl/susrv/SuShellAsyncObserver.class
++ org/openmarl/susrv/NoShellSessionError.class
+</code></pre>
+
+<p>This script also generates the Java API documentation to the <code>dist/api</code> directory. And <code>dist/include</code> will show the relevant C headers. </p>
+
+<p>As the actual build configuration is defined through <code>Android.mk</code> and <code>Applciation.mk</code>, one may also invoke directly the NDK tools as she uses to.
+A standard <code>Makefile</code> is also given, that help building the shared library to target a non Android context.</p>
+
+<h1>
+<a id="developers-guide" class="anchor" href="#developers-guide" aria-hidden="true"><span class="octicon octicon-link"></span></a>Developer's guide</h1>
+
+<p>We'll detail bellow the Android application developer's point of view. </p>
+
+<p><strong>Installation</strong></p>
+
+<p>To make both the native shared library and the Java API available, one have to:</p>
+
+<ul>
+<li>build a suitable JAR archive, for example using the provided <code>make.sh</code> script</li>
+<li>copy this file (<code>libsusrv.jar</code>) to the <code>libs</code> directory of the Android application (this actual location depends upon the development tools chain)</li>
+</ul>
+
+<p>The Java API package is <code>org.openmarl.susrv</code>.</p>
+
+<p><strong>Session initialization</strong></p>
+
+<p>Initialization is initiated by a call to the <code>SuShell.getInstance(context)</code> static method, which return a <code>SuShell</code> instance on success. The native SU shell session represented by this object is then bound to the requesting process.</p>
+
+<p>Keeping a reference to this instance may be a good idea, though any further call to <code>SuShell.getInstance(null)</code> will immediately returns the currently bound SU shell session, without any overhead.</p>
+
+<p>Initialization should not occur on the main thread, as the SU shell child process creation may take some time. Instead, have an activity that implement <code>SuShellAsyncObserver</code>, and starts an <code>SuShellAsyncInit</code> async task from some appropriate point of its life-cycle.</p>
+
+<p><strong>Executing commands</strong></p>
+
+<p>Any valid <em>command string</em> may be executed using the blocking API call:</p>
+
+<div class="highlight highlight-java"><pre><span class="kt">int</span> rval <span class="o">=</span>  <span class="kt">SuShell</span><span class="o">.</span>getInstance(<span class="kc">null</span>)<span class="o">.</span>exec(cmd);</pre></div>
+
+<p>where <code>rval</code> is the integer exit code of the command execution sub-process, as returned by <code>echo $?</code>. </p>
+
+<p>If the shell session has not been initialized or has been invalidated, a <code>NoShellSessionError</code> exception is thrown.</p>
+
+<p>Command strings execution may be queued by wrapping <code>exec()</code> calls within distinct threads: commands will then execute in the order they have been submitted, and each thread will have the appropriate return value delivered.</p>
+
+<p><strong>Session termination</strong></p>
+
+<p>A session is invalidated either normaly when <code>SuShell.exit()</code> is called, or when the child shell process terminates abnormally. In both situations, one can safely initiate a new session by calling <code>SuShell.getInstance(context)</code> again.</p>
+
+<h1>
+<a id="example" class="anchor" href="#example" aria-hidden="true"><span class="octicon octicon-link"></span></a>Example</h1>
+
+<p>This example is available in the <code>org.openmarl.susrv.example</code> package.</p>
+
+<p>We consider an activity like bellow:</p>
+
+<div class="highlight highlight-java"><pre><span class="k">public</span> <span class="k">class</span> <span class="nc">SomeActivity</span> <span class="k">extends</span> <span class="no">Activity</span> <span class="k">implements</span> <span class="no">SuShellAsyncObserver</span> {
+
+    <span class="k">private</span> <span class="kt">SuShell</span> mSuShell;
+
+    <span class="kt">@Override</span>
+    <span class="k">protected</span> <span class="kt">void</span> <span class="nf">onCreate</span>(<span class="kt">Bundle</span> <span class="nv">savedInstanceState</span>) {
+        <span class="nb">super</span><span class="o">.</span>onCreate(savedInstanceState);
+        setContentView(<span class="kt">R</span><span class="o">.</span>layout<span class="o">.</span>activity_home);
+
+        <span class="k">new</span> <span class="kt">SuShellAsyncInit</span>(<span class="nb">this</span>)<span class="o">.</span>execute();
+    }
+
+    <span class="kt">@Override</span>
+    <span class="k">protected</span> <span class="kt">void</span> <span class="nf">onDestroy</span>() {
+        <span class="nb">super</span><span class="o">.</span>onDestroy();
+        <span class="k">if</span> (mSuShell <span class="o">!=</span> <span class="kc">null</span>) {
+            mSuShell<span class="o">.</span>exit();
+            mSuShell <span class="o">=</span> <span class="kc">null</span>;
+        }
+    }
+
+    <span class="kt">@Override</span>
+    <span class="k">public</span> <span class="kt">void</span> <span class="nf">onShellInitComplete</span>(<span class="kt">SuShell</span> <span class="nv">suShell</span>) {
+        mSuShell <span class="o">=</span> suShell;
+
+        <span class="k">if</span> (mSuShell <span class="o">!=</span> <span class="kc">null</span>) {
+            <span class="kt">Log</span><span class="o">.</span>d(<span class="no">TAG</span>, <span class="s2">"SU shell session successfully initialized"</span>);
+            <span class="k">try</span> {
+                <span class="kt">int</span> rval <span class="o">=</span> mSuShell<span class="o">.</span>exec(<span class="s2">"id"</span>); <span class="c1">// rval will have the value 0</span>
+            }
+            <span class="k">catch</span>(<span class="kt">NoShellSessionError</span> e) {
+                mSuShell <span class="o">=</span> <span class="kc">null</span>;
+                <span class="kt">Log</span><span class="o">.</span>w(<span class="no">TAG</span>, <span class="s2">"SU shell session has just been invalidated, no luck"</span>);
+            }
+        }
+        <span class="k">else</span>
+            <span class="kt">Log</span><span class="o">.</span>e(<span class="no">TAG</span>, <span class="s2">"Failed to initialize SU shell session"</span>);
+    }
+}</pre></div>
+
+<p>This will produce the log file bellow:</p>
+
+<pre><code>root@falcon_umts:/ # cat /data/data/org.openmarl.susrvexample/files/var/log/su_session-10729.log
+[su_srv] Initializing SU shell session:
+[su_srv] owner PID: 10729
+[su_srv] AF UNIX path: /data/data/org.openmarl.susrvexample/files/var/run/su_session-10729
+[su_srv] AF UNIX rendez-vous complete
+[su_srv] Found system SU binary: /system/xbin/su
+[su_srv] Created SU shell child process (PID: 10753)
+[su_srv] SU shell session initialization complete
+# id
+uid=0(root) gid=0(root) context=u:r:init:s0
+</code></pre>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Libsusrv maintained by <a href="https://github.com/t0kt0ckus">t0kt0ckus</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
